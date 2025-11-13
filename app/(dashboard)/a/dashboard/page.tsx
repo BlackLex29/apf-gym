@@ -227,14 +227,14 @@ export default function AdminDashboard() {
       
       let errorMessage = 'Failed to load dashboard data. ';
       
-      if (err.message.includes('permission-denied')) {
-        errorMessage += 'Access denied. Please check Firestore security rules or try signing in again.';
+      if (err.code === 'permission-denied') {
+        errorMessage += 'Access denied. Please check Firestore security rules.';
       } else if (err.message.includes('Firebase is not properly initialized')) {
-        errorMessage += 'Firebase configuration issue.';
-      } else if (err.message.includes('network')) {
-        errorMessage += 'Network error. Check your connection.';
+        errorMessage += 'Firebase configuration issue. Please check your Firebase setup.';
+      } else if (err.code === 'unavailable') {
+        errorMessage += 'Network error. Please check your internet connection.';
       } else {
-        errorMessage += err.message;
+        errorMessage += `Please try again. Error: ${err.message}`;
       }
       
       setError(errorMessage);
@@ -253,63 +253,6 @@ export default function AdminDashboard() {
     } catch (error) {
       console.error('Error signing out:', error);
     }
-  };
-
-  // Load mock data for testing
-  const loadMockData = () => {
-    console.log('Loading mock data for demonstration...');
-    
-    const mockAppointments: Appointment[] = [
-      {
-        id: '1',
-        clientName: 'Juan Dela Cruz',
-        serviceType: 'gym',
-        serviceName: 'Personal Training',
-        date: '2024-01-15',
-        time: '10:00 AM',
-        coach: 'Coach Carlos',
-        status: 'confirmed',
-        paymentMethod: 'gcash',
-        paymentStatus: 'paid',
-        createdAt: new Date()
-      },
-      {
-        id: '2',
-        clientName: 'Maria Santos',
-        serviceType: 'studio',
-        serviceName: 'Zumba Class',
-        date: '2024-01-15',
-        time: '4:00 PM',
-        status: 'pending',
-        paymentMethod: 'cash',
-        paymentStatus: 'pending',
-        createdAt: new Date()
-      },
-      {
-        id: '3',
-        clientName: 'Pedro Reyes',
-        serviceType: 'gym',
-        serviceName: 'Weight Training',
-        date: '2024-01-16',
-        time: '2:00 PM',
-        status: 'completed',
-        paymentMethod: 'cash',
-        paymentStatus: 'paid',
-        createdAt: new Date()
-      }
-    ];
-
-    const revenue = calculateRevenue(mockAppointments);
-    
-    const mockData: DashboardData = {
-      stats: calculateStats({ appointments: mockAppointments, revenue, stats: [] }),
-      appointments: mockAppointments,
-      revenue: revenue
-    };
-    
-    setDashboardData(mockData);
-    setError(null);
-    setLoading(false);
   };
 
   const navigateToBookings = () => {
@@ -338,25 +281,19 @@ export default function AdminDashboard() {
           <p className="text-gray-400 mb-6">
             Please sign in to access the admin dashboard
           </p>
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={handleSignIn}
-              className="bg-orange-500 hover:bg-orange-600 px-6 py-3 rounded-lg transition-colors font-semibold"
-            >
-              Sign In
-            </button>
-            <button
-              onClick={loadMockData}
-              className="bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-lg transition-colors"
-            >
-              View Demo Data
-            </button>
-          </div>
+          <button
+            onClick={handleSignIn}
+            className="w-full bg-orange-500 hover:bg-orange-600 px-6 py-3 rounded-lg transition-colors font-semibold"
+          >
+            Sign In to Continue
+          </button>
           <div className="mt-6 p-4 bg-gray-800 rounded-lg">
-            <p className="text-sm text-gray-400 mb-2">Firestore Rules Issue:</p>
-            <p className="text-xs text-gray-500 text-left">
-              Current rules require authentication. Either sign in or update Firestore rules to allow public access for development.
-            </p>
+            <p className="text-sm text-gray-400 mb-2">Troubleshooting Tips:</p>
+            <ul className="text-xs text-gray-500 text-left space-y-1">
+              <li>• Make sure you have a valid admin account</li>
+              <li>• Check your internet connection</li>
+              <li>• Verify Firebase configuration</li>
+            </ul>
           </div>
         </div>
       </div>
@@ -369,7 +306,8 @@ export default function AdminDashboard() {
         <div className="text-center">
           <RefreshCw className="w-12 h-12 animate-spin mx-auto mb-4 text-orange-500" />
           <p className="text-gray-400">Loading dashboard data...</p>
-          <p className="text-sm text-gray-500 mt-2">User: {user.email}</p>
+          <p className="text-sm text-gray-500 mt-2">Fetching from database</p>
+          <p className="text-xs text-gray-600 mt-1">User: {user.email}</p>
         </div>
       </div>
     );
@@ -380,27 +318,30 @@ export default function AdminDashboard() {
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white flex items-center justify-center">
         <div className="text-center max-w-md mx-4">
           <AlertCircle className="w-16 h-16 mx-auto mb-4 text-red-500" />
-          <h3 className="text-xl font-bold mb-2 text-red-400">Dashboard Error</h3>
-          <p className="text-gray-400 mb-4">{error}</p>
+          <h3 className="text-xl font-bold mb-2 text-red-400">Unable to Load Dashboard</h3>
+          <p className="text-gray-400 mb-6">{error}</p>
           <div className="flex flex-col gap-3">
             <button
               onClick={fetchDashboardData}
               className="bg-orange-500 hover:bg-orange-600 px-6 py-3 rounded-lg transition-colors font-semibold"
             >
-              Try Again
-            </button>
-            <button
-              onClick={loadMockData}
-              className="bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-lg transition-colors"
-            >
-              Use Demo Data
+              Retry Loading Data
             </button>
             <button
               onClick={handleSignOut}
-              className="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg transition-colors"
+              className="bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-lg transition-colors"
             >
               Sign Out
             </button>
+          </div>
+          <div className="mt-6 p-4 bg-gray-800 rounded-lg">
+            <p className="text-sm text-gray-400 mb-2">If the problem persists:</p>
+            <ul className="text-xs text-gray-500 text-left space-y-1">
+              <li>• Check Firestore security rules</li>
+              <li>• Verify Firebase project configuration</li>
+              <li>• Ensure you have proper permissions</li>
+              <li>• Contact system administrator</li>
+            </ul>
           </div>
         </div>
       </div>
@@ -420,7 +361,7 @@ export default function AdminDashboard() {
               Welcome, {user.email} 
               <button 
                 onClick={handleSignOut}
-                className="ml-2 text-sm text-gray-500 hover:text-white"
+                className="ml-2 text-sm text-gray-500 hover:text-white transition-colors"
               >
                 (Sign Out)
               </button>
@@ -429,15 +370,17 @@ export default function AdminDashboard() {
           <div className="flex gap-3 items-center">
             <button 
               onClick={fetchDashboardData} 
-              className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors" 
+              className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50" 
               title="Refresh data"
+              disabled={loading}
             >
-              <RefreshCw className="w-5 h-5" />
+              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
             </button>
             <select
               value={timeRange}
               onChange={(e) => setTimeRange(e.target.value)}
               className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              disabled={loading}
             >
               <option value="today">Today</option>
               <option value="week">This Week</option>
@@ -544,7 +487,8 @@ export default function AdminDashboard() {
               {dashboardData.appointments.length === 0 && (
                 <div className="text-center py-8 text-gray-400">
                   <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>No appointments yet</p>
+                  <p>No appointments found</p>
+                  <p className="text-sm mt-2">Appointments will appear here once booked</p>
                 </div>
               )}
             </div>

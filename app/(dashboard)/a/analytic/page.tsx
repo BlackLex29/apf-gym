@@ -33,6 +33,8 @@ import {
   orderBy,
   Timestamp,
 } from "firebase/firestore";
+export const dynamic = "force-dynamic";
+
 
 
 interface AppointmentData {
