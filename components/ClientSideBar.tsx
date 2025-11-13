@@ -49,9 +49,9 @@ const clientNavItems = [
   },
    {
     title: "Settings",
-    url: "/c/settings",
+    url: "/c/setting",
     icon: IconSettings,
-    id: "membership",
+    id: "settings",
   },
   
 ];
@@ -137,7 +137,7 @@ export function ClientSidebar() {
               className="text-red-400 hover:text-red-300"
             >
               <div
-                onClick={() => handleNavigation("/logout")}
+                onClick={() => handleNavigation("/login")}
                 className="flex items-center gap-3 w-full cursor-pointer"
               >
                 <IconLogout className="!size-5" />

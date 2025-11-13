@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, Calendar, TrendingUp, Bell, Dumbbell, Clock, DollarSign,
   Activity, Music, Sparkles, RefreshCw, AlertCircle, Shield, LogIn
 } from 'lucide-react';
 import { db, auth } from '@/lib/firebase';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
@@ -51,17 +51,22 @@ export default function AdminDashboard() {
   });
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
+  const [hasData, setHasData] = useState(false);
   const router = useRouter();
 
   // Check authentication state
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log('Auth state changed:', user ? 'User logged in' : 'No user');
       setUser(user);
       setAuthLoading(false);
+      
       if (user) {
-        console.log('User is authenticated:', user.email);
-        fetchDashboardData();
+        console.log('User authenticated:', user.email);
+        await fetchDashboardData();
       } else {
+        console.log('No user, stopping loading');
         setLoading(false);
         setError('Please sign in to access the dashboard');
       }
@@ -71,7 +76,7 @@ export default function AdminDashboard() {
   }, []);
 
   // Helper function to calculate stats dynamically
-  const calculateStats = (data: DashboardData): Stat[] => {
+  const calculateStats = useCallback((data: DashboardData): Stat[] => {
     const totalAppointments = data.appointments.length;
     const confirmedAppointments = data.appointments.filter(apt => apt.status === 'confirmed').length;
     const pendingAppointments = data.appointments.filter(apt => apt.status === 'pending').length;
@@ -137,10 +142,10 @@ export default function AdminDashboard() {
         trend: 'up'
       }
     ];
-  };
+  }, []);
 
   // Calculate revenue based on appointments
-  const calculateRevenue = (appointments: Appointment[]): number => {
+  const calculateRevenue = useCallback((appointments: Appointment[]): number => {
     const priceMap: { [key: string]: number } = {
       'Personal Training': 3500,
       'Weight Training': 300,
@@ -156,51 +161,145 @@ export default function AdminDashboard() {
         const price = priceMap[apt.serviceName] || 0;
         return total + price;
       }, 0);
-  };
+  }, []);
 
-  const fetchDashboardData = async () => {
+  // Create default stats for empty state
+  const createDefaultStats = useCallback((): Stat[] => {
+    return [
+      {
+        title: 'Total Appointments',
+        value: '0',
+        change: '+0%',
+        icon: Calendar,
+        color: 'bg-blue-500',
+        trend: 'up'
+      },
+      {
+        title: 'Confirmed',
+        value: '0',
+        change: '+0%',
+        icon: Users,
+        color: 'bg-green-500',
+        trend: 'up'
+      },
+      {
+        title: 'Pending',
+        value: '0',
+        change: '+0%',
+        icon: Clock,
+        color: 'bg-yellow-500',
+        trend: 'down'
+      },
+      {
+        title: 'Completed',
+        value: '0',
+        change: '+0%',
+        icon: Shield,
+        color: 'bg-emerald-500',
+        trend: 'up'
+      },
+      {
+        title: 'Total Revenue',
+        value: '₱0',
+        change: '+0%',
+        icon: DollarSign,
+        color: 'bg-purple-500',
+        trend: 'up'
+      },
+      {
+        title: 'Gym Sessions',
+        value: '0',
+        change: '+0%',
+        icon: Dumbbell,
+        color: 'bg-orange-500',
+        trend: 'up'
+      },
+      {
+        title: 'Studio Classes',
+        value: '0',
+        change: '+0%',
+        icon: Music,
+        color: 'bg-pink-500',
+        trend: 'up'
+      }
+    ];
+  }, []);
+
+  const fetchDashboardData = useCallback(async () => {
     if (!user) {
+      console.log('No user available for fetching data');
       setError('Please sign in to access dashboard data');
+      setLoading(false);
       return;
     }
 
+    console.log('Starting to fetch dashboard data...');
     setLoading(true);
     setError(null);
 
     try {
-      console.log('Starting to fetch dashboard data for user:', user.email);
+      // Add timeout protection
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 10000) // Reduced timeout to 10s
+      );
 
       // Check if Firebase is initialized
       if (!db) {
         throw new Error('Firebase is not properly initialized');
       }
 
-      // Fetch appointments from Firestore
+      console.log('Firebase DB initialized, fetching appointments...');
+
+      // Fetch appointments from Firestore with limit for better performance
       const appointmentsRef = collection(db, "appointments");
-      console.log('Appointments reference created');
+      const appointmentsQuery = query(
+        appointmentsRef, 
+        orderBy("createdAt", "desc"),
+        limit(100) // Limit to 100 documents for performance
+      );
+      
+      const fetchPromise = getDocs(appointmentsQuery);
+      const appointmentsSnapshot = await Promise.race([fetchPromise, timeoutPromise]) as any;
 
-      const appointmentsQuery = query(appointmentsRef, orderBy("createdAt", "desc"));
-      console.log('Query created');
-
-      const appointmentsSnapshot = await getDocs(appointmentsQuery);
       console.log('Snapshot received:', appointmentsSnapshot.size, 'documents');
 
       const appointmentsData: Appointment[] = [];
-      appointmentsSnapshot.forEach((doc) => {
+      
+      if (appointmentsSnapshot.empty) {
+        console.log('No appointments found in database');
+        // Create empty dashboard with default stats
+        const defaultStats = createDefaultStats();
+        const finalData: DashboardData = {
+          stats: defaultStats,
+          appointments: [],
+          revenue: 0
+        };
+        
+        setDashboardData(finalData);
+        setHasData(false);
+        setLoading(false);
+        setRetryCount(0);
+        return;
+      }
+
+      appointmentsSnapshot.forEach((doc: any) => {
         const data = doc.data();
-        appointmentsData.push({
-          id: doc.id,
-          clientName: data.clientName || "Unknown Client",
-          serviceType: data.serviceType || "unknown",
-          serviceName: data.serviceName || "Unknown Service",
-          date: data.date || "Unknown Date",
-          time: data.time || "Unknown Time",
-          coach: data.coach,
-          status: data.status || "pending",
-          paymentMethod: data.paymentMethod || "cash",
-          paymentStatus: data.paymentStatus || "pending",
-          createdAt: data.createdAt?.toDate() || new Date()
-        } as Appointment);
+        // Add validation for required fields
+        if (data.clientName && data.serviceName) {
+          appointmentsData.push({
+            id: doc.id,
+            clientName: data.clientName || "Unknown Client",
+            serviceType: data.serviceType || "unknown",
+            serviceName: data.serviceName || "Unknown Service",
+            date: data.date || "Unknown Date",
+            time: data.time || "Unknown Time",
+            coach: data.coach,
+            status: data.status || "pending",
+            paymentMethod: data.paymentMethod || "cash",
+            paymentStatus: data.paymentStatus || "pending",
+            createdAt: data.createdAt?.toDate() || new Date()
+          } as Appointment);
+        }
       });
 
       console.log('Processed appointments:', appointmentsData.length);
@@ -216,7 +315,9 @@ export default function AdminDashboard() {
 
       finalData.stats = calculateStats(finalData);
       setDashboardData(finalData);
+      setHasData(true);
       setLoading(false);
+      setRetryCount(0); // Reset retry count on success
       
       console.log('Dashboard data loaded successfully');
       console.log('Total appointments:', appointmentsData.length);
@@ -226,21 +327,62 @@ export default function AdminDashboard() {
       console.error('Error fetching dashboard data:', err);
       
       let errorMessage = 'Failed to load dashboard data. ';
+      let shouldRetry = false;
       
-      if (err.code === 'permission-denied') {
+      if (err.message === 'Request timeout') {
+        errorMessage += 'Request timed out. ';
+        shouldRetry = retryCount < 2; // Reduced retry attempts
+      } else if (err.code === 'permission-denied') {
         errorMessage += 'Access denied. Please check Firestore security rules.';
       } else if (err.message.includes('Firebase is not properly initialized')) {
         errorMessage += 'Firebase configuration issue. Please check your Firebase setup.';
       } else if (err.code === 'unavailable') {
         errorMessage += 'Network error. Please check your internet connection.';
+        shouldRetry = retryCount < 2;
+      } else if (err.code === 'not-found') {
+        // Collection doesn't exist yet, show empty dashboard
+        console.log('Collection not found, showing empty dashboard');
+        const defaultStats = createDefaultStats();
+        const finalData: DashboardData = {
+          stats: defaultStats,
+          appointments: [],
+          revenue: 0
+        };
+        setDashboardData(finalData);
+        setHasData(false);
+        setLoading(false);
+        return;
       } else {
         errorMessage += `Please try again. Error: ${err.message}`;
+        shouldRetry = retryCount < 1;
       }
       
-      setError(errorMessage);
-      setLoading(false);
+      // For non-critical errors, show empty dashboard instead of error
+      if (err.code === 'not-found' || err.code === 'permission-denied') {
+        const defaultStats = createDefaultStats();
+        const finalData: DashboardData = {
+          stats: defaultStats,
+          appointments: [],
+          revenue: 0
+        };
+        setDashboardData(finalData);
+        setHasData(false);
+        setLoading(false);
+      } else {
+        setError(errorMessage);
+        setLoading(false);
+        
+        // Auto-retry for transient errors
+        if (shouldRetry) {
+          console.log(`Retrying fetch... (${retryCount + 1}/2)`);
+          setRetryCount(prev => prev + 1);
+          setTimeout(() => {
+            if (user) fetchDashboardData();
+          }, 1000 * (retryCount + 1)); // Reduced backoff
+        }
+      }
     }
-  };
+  }, [user, calculateRevenue, calculateStats, retryCount, createDefaultStats]);
 
   const handleSignIn = () => {
     router.push('/login');
@@ -257,6 +399,11 @@ export default function AdminDashboard() {
 
   const navigateToBookings = () => {
     router.push('/a/booking');
+  };
+
+  const handleRetry = () => {
+    setRetryCount(0);
+    fetchDashboardData();
   };
 
   // Show authentication loading
@@ -287,14 +434,6 @@ export default function AdminDashboard() {
           >
             Sign In to Continue
           </button>
-          <div className="mt-6 p-4 bg-gray-800 rounded-lg">
-            <p className="text-sm text-gray-400 mb-2">Troubleshooting Tips:</p>
-            <ul className="text-xs text-gray-500 text-left space-y-1">
-              <li>• Make sure you have a valid admin account</li>
-              <li>• Check your internet connection</li>
-              <li>• Verify Firebase configuration</li>
-            </ul>
-          </div>
         </div>
       </div>
     );
@@ -306,14 +445,16 @@ export default function AdminDashboard() {
         <div className="text-center">
           <RefreshCw className="w-12 h-12 animate-spin mx-auto mb-4 text-orange-500" />
           <p className="text-gray-400">Loading dashboard data...</p>
-          <p className="text-sm text-gray-500 mt-2">Fetching from database</p>
+          <p className="text-sm text-gray-500 mt-2">
+            {retryCount > 0 ? `Retry attempt ${retryCount}/2` : 'Fetching from database'}
+          </p>
           <p className="text-xs text-gray-600 mt-1">User: {user.email}</p>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error && !hasData) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white flex items-center justify-center">
         <div className="text-center max-w-md mx-4">
@@ -322,10 +463,10 @@ export default function AdminDashboard() {
           <p className="text-gray-400 mb-6">{error}</p>
           <div className="flex flex-col gap-3">
             <button
-              onClick={fetchDashboardData}
+              onClick={handleRetry}
               className="bg-orange-500 hover:bg-orange-600 px-6 py-3 rounded-lg transition-colors font-semibold"
             >
-              Retry Loading Data
+              {retryCount >= 2 ? 'Try Again' : 'Retry Loading Data'}
             </button>
             <button
               onClick={handleSignOut}
@@ -334,20 +475,12 @@ export default function AdminDashboard() {
               Sign Out
             </button>
           </div>
-          <div className="mt-6 p-4 bg-gray-800 rounded-lg">
-            <p className="text-sm text-gray-400 mb-2">If the problem persists:</p>
-            <ul className="text-xs text-gray-500 text-left space-y-1">
-              <li>• Check Firestore security rules</li>
-              <li>• Verify Firebase project configuration</li>
-              <li>• Ensure you have proper permissions</li>
-              <li>• Contact system administrator</li>
-            </ul>
-          </div>
         </div>
       </div>
     );
   }
 
+  // Main Dashboard Content - Shows even if there's no data but user is authenticated
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
       {/* Header */}
@@ -366,6 +499,11 @@ export default function AdminDashboard() {
                 (Sign Out)
               </button>
             </p>
+            {!hasData && (
+              <p className="text-sm text-yellow-400 mt-1">
+                No appointment data found. Bookings will appear here once created.
+              </p>
+            )}
           </div>
           <div className="flex gap-3 items-center">
             <button 
@@ -489,6 +627,12 @@ export default function AdminDashboard() {
                   <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p>No appointments found</p>
                   <p className="text-sm mt-2">Appointments will appear here once booked</p>
+                  <button 
+                    onClick={() => router.push('/a/booking')}
+                    className="mt-4 bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded transition-colors"
+                  >
+                    Create First Booking
+                  </button>
                 </div>
               )}
             </div>

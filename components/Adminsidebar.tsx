@@ -166,7 +166,7 @@ export function Adminsidebar({ ...props }: React.ComponentProps<typeof Sidebar>)
           <SidebarMenuItem>
             <SidebarMenuButton asChild className="text-red-400 hover:text-red-300">
               <div
-                onClick={() => handleNavigation("/logout")}
+                onClick={() => handleNavigation("/login")}
                 className="flex items-center gap-3 w-full cursor-pointer"
               >
                 <IconLogout className="!size-5" />
