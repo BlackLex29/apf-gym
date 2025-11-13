@@ -7,6 +7,8 @@ import {
     Eye,
     EyeOff,
     ArrowRight,
+    Mail,
+    AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,17 +19,23 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import Link from "next/link";
-import { signInWithCustomToken } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState("");
+    const [verificationSent, setVerificationSent] = useState(false);
+    const [unverifiedEmail, setUnverifiedEmail] = useState("");
     const router = useRouter();
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        setError("");
 
         const data = new FormData(e.currentTarget);
         const email = data.get("email") as string;
@@ -35,31 +43,29 @@ export default function LoginPage() {
 
         setIsLoading(true);
         try {
-            // Call login API
-            const res = await fetch("/api/auth/login", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, password }),
-            });
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
 
-            const result = await res.json();
-
-            if (!res.ok) {
-                throw new Error(result.error);
+            // Check if email is verified
+            if (!user.emailVerified) {
+                await auth.signOut();
+                setError("Your email is not verified. Please check your inbox for the verification link sent during registration, or go back to the registration page to resend it.");
+                return;
             }
 
-            // Sign in with custom token on client side
-            await signInWithCustomToken(auth, result.token);
+            // Get user role from Firestore
+            const userDoc = await getDoc(doc(db, "users", user.uid));
+            const userData = userDoc.data();
+            const role = userData?.role || "client";
 
-            const role = result.user.role;
-
+            // Redirect based on role
             if (role === "admin" || role === "owner") {
                 router.push("/a/dashboard");
             } else {
                 router.push("/c/dashboard");
             }
         } catch (err: any) {
-            alert(err.message || "Login failed");
+            setError(err.message || "Login failed");
         } finally {
             setIsLoading(false);
         }
@@ -114,6 +120,41 @@ export default function LoginPage() {
                     </CardHeader>
 
                     <CardContent>
+                        {/* Error/Success Alert */}
+                        {error && (
+                            <Alert
+                                className={`mb-4 ${verificationSent
+                                    ? 'border-blue-500 bg-blue-500/10'
+                                    : 'border-destructive bg-destructive/10'
+                                    }`}
+                            >
+                                {verificationSent ? (
+                                    <Mail className="h-4 w-4 text-blue-500" />
+                                ) : (
+                                    <AlertCircle className="h-4 w-4 text-destructive" />
+                                )}
+                                <AlertDescription className={verificationSent ? 'text-blue-500' : 'text-destructive'}>
+                                    {error}
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
+                        {/* Verification Notice */}
+                        {verificationSent && unverifiedEmail && (
+                            <Alert className="mb-4 border-orange-500 bg-orange-500/10">
+                                <Mail className="h-4 w-4 text-orange-500" />
+                                <AlertDescription className="text-orange-500">
+                                    <p className="mb-2">
+                                        We've sent a verification link to <strong>{unverifiedEmail}</strong>
+                                    </p>
+                                    <p className="text-sm mb-3">
+                                        Check your inbox and click the link to verify your account.
+                                        Don't forget to check your spam folder!
+                                    </p>
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
                         <form onSubmit={handleSubmit} className="space-y-4">
                             {/* Email */}
                             <Input
@@ -165,7 +206,7 @@ export default function LoginPage() {
                             </Button>
 
                             <p className="text-center text-sm text-muted-foreground">
-                                Don&#39;t have an account?{" "}
+                                Don't have an account?{" "}
                                 <Link href="/register" className="text-orange-500 hover:text-orange-400">
                                     Sign up
                                 </Link>
