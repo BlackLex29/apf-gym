@@ -7,10 +7,13 @@ import {
     TotpMultiFactorGenerator,
     TotpSecret,
     User,
+    updatePassword,
+    EmailAuthProvider,
+    reauthenticateWithCredential,
 } from "firebase/auth";
 import { QRCodeSVG } from "qrcode.react";
-import { auth } from "@/lib/firebase";
-
+import { auth, db } from "@/lib/firebase";
+import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -22,291 +25,566 @@ import {
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import {
     Shield,
     ShieldCheck,
     ShieldAlert,
     Loader2,
     RefreshCw,
+    User as UserIcon,
+    Bell,
+    Palette,
+    LogOut,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-/* -------------------------------------------------------------------------- */
-/*  Helper – the secret key is private, but we know it exists at runtime.    */
-/* -------------------------------------------------------------------------- */
 const getSecretKey = (secret: TotpSecret): string => {
-    // @ts-ignore – secret key is private but present on the object
-    return secret.secret;
+    // @ts-ignore – Firebase types don’t expose secret directly
+    return (secret as any).secret;
 };
 
 export default function SettingsPage() {
-    const [user, setUser] = useState<User | null>(null);
     const router = useRouter();
+
+    /* ------------------------------------------------------------------ *
+     *  Auth & user data
+     * ------------------------------------------------------------------ */
+    const [user, setUser] = useState<User | null>(null);
+    const [authLoading, setAuthLoading] = useState(true);
+
+    /* ------------------------------------------------------------------ *
+     *  Global UI state
+     * ------------------------------------------------------------------ */
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [success, setSuccess] = useState<string | null>(null);
+
+    /* ------------------------------------------------------------------ *
+     *  Profile
+     * ------------------------------------------------------------------ */
+    const [firstName, setFirstName] = useState("");
+    const [lastName, setLastName] = useState("");
+    const [phone, setPhone] = useState("");
+
+    /* ------------------------------------------------------------------ *
+     *  Notifications
+     * ------------------------------------------------------------------ */
+    const [emailNotifications, setEmailNotifications] = useState(true);
+    const [pushNotifications, setPushNotifications] = useState(true);
+    const [smsNotifications, setSmsNotifications] = useState(false);
+
+    /* ------------------------------------------------------------------ *
+     *  Password
+     * ------------------------------------------------------------------ */
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+
+    /* ------------------------------------------------------------------ *
+     *  Preferences
+     * ------------------------------------------------------------------ */
+    const [language, setLanguage] = useState("en");
+    const [timezone, setTimezone] = useState("asia/manila");
+
+    /* ------------------------------------------------------------------ *
+     *  2FA (TOTP)
+     * ------------------------------------------------------------------ */
     const [qrUrl, setQrUrl] = useState<string | null>(null);
     const [totpSecret, setTotpSecret] = useState<TotpSecret | null>(null);
     const [code, setCode] = useState("");
     const [enrolled, setEnrolled] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [actuallyEnrolled, setActuallyEnrolled] = useState(false);
-    const [refreshKey, setRefreshKey] = useState(0);
-    const [authLoading, setAuthLoading] = useState(true);
 
+    /* ------------------------------------------------------------------ *
+     *  Load user + Firestore data
+     * ------------------------------------------------------------------ */
     useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged((currentUser) => {
-            setUser(currentUser);
+        const unsubscribe = auth.onAuthStateChanged(async (u) => {
+            setUser(u);
             setAuthLoading(false);
-            if (currentUser) {
-                setEnrolled(
-                    multiFactor(currentUser).enrolledFactors.some(
-                        (f) => f.factorId === TotpMultiFactorGenerator.FACTOR_ID
-                    )
+
+            if (u) {
+                // 2FA status
+                const mf = multiFactor(u);
+                const hasTotp = mf.enrolledFactors.some(
+                    (f) => f.factorId === TotpMultiFactorGenerator.FACTOR_ID
                 );
+                setEnrolled(hasTotp);
+
+                // Firestore profile
+                try {
+                    const snap = await getDoc(doc(db, "users", u.uid));
+                    if (snap.exists()) {
+                        const d = snap.data();
+                        setFirstName(d.firstName ?? "");
+                        setLastName(d.lastName ?? "");
+                        setPhone(d.phone ?? "");
+                        setEmailNotifications(d.emailNotifications ?? true);
+                        setPushNotifications(d.pushNotifications ?? true);
+                        setSmsNotifications(d.smsNotifications ?? false);
+                        setLanguage(d.language ?? "en");
+                        setTimezone(d.timezone ?? "asia/manila");
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
             }
         });
 
         return () => unsubscribe();
     }, []);
 
-    useEffect(() => {
-        if (user) {
-            const checkEnrollment = multiFactor(user).enrolledFactors.some(
-                (f) => f.factorId === TotpMultiFactorGenerator.FACTOR_ID
-            );
-            setActuallyEnrolled(checkEnrollment);
-        }
-    }, [user, enrolled]);
-
-    // NOW you can do the early return AFTER all hooks
-    if (authLoading) {
-        return <div className="max-w-2xl mx-auto p-6">Loading...</div>;
-    }
-
-    const handleLogout = async () => {
-        setLoading(true);
+    /* ------------------------------------------------------------------ *
+     *  Helpers
+     * ------------------------------------------------------------------ */
+    const clearMessages = () => {
         setError(null);
-
-        try {
-            await signOut(auth);
-            router.push("/login");
-        } catch (e: any) {
-            setError(e?.message || "Failed to sign out.");
-        } finally {
-            setLoading(false);
-        }
+        setSuccess(null);
     };
 
-    const isEnrolled = user
-        ? multiFactor(user).enrolledFactors.some(
-            (f) => f.factorId === TotpMultiFactorGenerator.FACTOR_ID
-        )
-        : false;
-
-    console.log("User:", user?.email);
-    console.log("Enrolled factors:", user ? multiFactor(user).enrolledFactors : []);
-    console.log("Is enrolled:", isEnrolled);
-    console.log("Enrolled state:", enrolled);
-
-    /* --------------------------------------------------------------- */
-    /*  1. Start enrollment – generate secret + QR                    */
-    /* --------------------------------------------------------------- */
     const startEnrollment = async () => {
-        if (!user) {
-            setError("You must be logged in.");
-            return;
-        }
-
+        if (!user) return;
         setLoading(true);
-        setError(null);
-        setQrUrl(null);
-        setCode("");
-
+        clearMessages();
         try {
             const resolver = multiFactor(user);
             const session = await resolver.getSession();
             const secret = await TotpMultiFactorGenerator.generateSecret(session);
-
             const uri = secret.generateQrCodeUrl(user.email ?? "user", "GymSched Pro");
             setQrUrl(uri);
             setTotpSecret(secret);
         } catch (e: any) {
-            console.error(e);
-            setError(
-                e?.message ||
-                "Failed to generate TOTP. Is TOTP enabled in the Firebase console?"
-            );
+            setError(e?.message ?? "Failed to generate TOTP secret");
         } finally {
             setLoading(false);
         }
     };
 
-    // After successful enrollment, reload the user
     const verifyAndEnroll = async () => {
         if (!user || !totpSecret || code.length !== 6) return;
-
         setLoading(true);
-        setError(null);
-
+        clearMessages();
         try {
             const assertion = TotpMultiFactorGenerator.assertionForEnrollment(
                 totpSecret,
                 code
             );
             await multiFactor(user).enroll(assertion, "TOTP Authenticator");
-
-            // Reload the user to get fresh MFA data
             await user.reload();
-
             setEnrolled(true);
             setQrUrl(null);
             setTotpSecret(null);
             setCode("");
-            setRefreshKey(prev => prev + 1); // Force re-render
+            setSuccess("2FA enabled!");
         } catch (e: any) {
-            console.error(e);
-            const msg = e?.message || "Unknown error";
-            if (msg.includes("INVALID_TOTP_VERIFICATION_CODE")) {
-                setError("Code expired or invalid – try a fresh code.");
-            } else {
-                setError(msg);
-            }
+            setError(
+                e?.message?.includes("INVALID_TOTP_VERIFICATION_CODE")
+                    ? "Invalid or expired code – try again."
+                    : e?.message ?? "Verification failed"
+            );
         } finally {
             setLoading(false);
         }
     };
 
-    /* --------------------------------------------------------------- */
-    /*  3. Un‑enroll (remove TOTP)                                    */
-    /* --------------------------------------------------------------- */
     const unenroll = async () => {
         if (!user) return;
-
         const factor = multiFactor(user).enrolledFactors.find(
             (f) => f.factorId === TotpMultiFactorGenerator.FACTOR_ID
         );
         if (!factor) return;
 
         setLoading(true);
-        setError(null);
-
+        clearMessages();
         try {
             await multiFactor(user).unenroll(factor.uid);
-
-            // ADD THIS: Reload user to get updated MFA status
             await user.reload();
-
             setEnrolled(false);
-            setQrUrl(null);
-            setTotpSecret(null);
+            setSuccess("2FA removed");
         } catch (e: any) {
-            setError(e?.message || "Failed to remove TOTP.");
+            setError(e?.message ?? "Failed to remove 2FA");
         } finally {
             setLoading(false);
         }
     };
 
-    /* --------------------------------------------------------------- */
-    /*  UI                                                            */
-    /* --------------------------------------------------------------- */
-    return (
-        <div className="max-w-2xl mx-auto p-6 space-y-8">
-            <div className="space-y-2">
-                <h1 className="text-3xl font-bold tracking-tight">
-                    Security Settings
-                </h1>
-                <p className="text-muted-foreground">
-                    Manage two‑factor authentication and account security.
-                </p>
+    const handleLogout = async () => {
+        setLoading(true);
+        clearMessages();
+        try {
+            await signOut(auth);
+            router.push("/login");
+        } catch (e: any) {
+            setError(e?.message ?? "Logout failed");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const saveProfile = async () => {
+        if (!user) return;
+        setLoading(true);
+        clearMessages();
+        try {
+            await updateDoc(doc(db, "users", user.uid), {
+                firstName,
+                lastName,
+                phone,
+            });
+            setSuccess("Profile saved");
+        } catch (e: any) {
+            setError(e?.message ?? "Failed to save profile");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const saveNotifications = async () => {
+        if (!user) return;
+        setLoading(true);
+        clearMessages();
+        try {
+            await updateDoc(doc(db, "users", user.uid), {
+                emailNotifications,
+                pushNotifications,
+                smsNotifications,
+            });
+            setSuccess("Notification preferences saved");
+        } catch (e: any) {
+            setError(e?.message ?? "Failed to save notifications");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const changePassword = async () => {
+        if (!user?.email) return;
+        if (newPassword !== confirmPassword) {
+            setError("Passwords do not match");
+            return;
+        }
+        if (newPassword.length < 6) {
+            setError("Password must be at least 6 characters");
+            return;
+        }
+
+        setLoading(true);
+        clearMessages();
+        try {
+            const cred = EmailAuthProvider.credential(user.email, currentPassword);
+            await reauthenticateWithCredential(user, cred);
+            await updatePassword(user, newPassword);
+            setSuccess("Password updated");
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmPassword("");
+        } catch (e: any) {
+            setError(
+                e.code === "auth/wrong-password"
+                    ? "Current password is incorrect"
+                    : e?.message ?? "Password update failed"
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const savePreferences = async () => {
+        if (!user) return;
+        setLoading(true);
+        clearMessages();
+        try {
+            await updateDoc(doc(db, "users", user.uid), { language, timezone });
+            setSuccess("Preferences saved");
+        } catch (e: any) {
+            setError(e?.message ?? "Failed to save preferences");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    /* ------------------------------------------------------------------ *
+     *  Render
+     * ------------------------------------------------------------------ */
+    if (authLoading) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-background">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
+        );
+    }
 
-            <Card>
-                <CardHeader>
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <Shield className="h-6 w-6 text-orange-500" />
-                            <div>
-                                <CardTitle>Two‑Factor Authentication (TOTP)</CardTitle>
-                                <CardDescription>
-                                    Add an extra layer of security using an authenticator app.
-                                </CardDescription>
+    return (
+        <div className="min-h-screen bg-background text-foreground">
+            {/* Sticky header */}
+            <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+                <div className="container mx-auto px-4 py-4">
+                    <h1 className="text-2xl font-bold">Settings</h1>
+                    <p className="text-sm text-muted-foreground">
+                        Manage your account preferences and security
+                    </p>
+                </div>
+            </header>
+
+            <main className="container mx-auto p-4 md:p-6 space-y-6">
+                {/* Global messages */}
+                {error && (
+                    <Alert variant="destructive">
+                        <ShieldAlert className="h-4 w-4" />
+                        <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                )}
+                {success && (
+                    <Alert className="border-green-500/20 bg-green-500/10">
+                        <ShieldCheck className="h-4 w-4 text-green-500" />
+                        <AlertDescription className="text-green-500">
+                            {success}
+                        </AlertDescription>
+                    </Alert>
+                )}
+
+                <div className="grid gap-6 md:grid-cols-2">
+                    {/* ---------- Profile ---------- */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <UserIcon className="h-5 w-5" />
+                                Profile Information
+                            </CardTitle>
+                            <CardDescription>Update your personal details</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-sm font-medium">First Name</label>
+                                    <Input
+                                        value={firstName}
+                                        onChange={(e) => setFirstName(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-sm font-medium">Last Name</label>
+                                    <Input
+                                        value={lastName}
+                                        onChange={(e) => setLastName(e.target.value)}
+                                    />
+                                </div>
                             </div>
-                        </div>
 
-                        {(isEnrolled || enrolled) && (
-                            <Badge variant="default" className="bg-green-500">
-                                <ShieldCheck className="h-3 w-3 mr-1" />
-                                Active
-                            </Badge>
-                        )}
-                    </div>
-                </CardHeader>
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium">Email</label>
+                                <Input value={user?.email ?? ""} disabled />
+                            </div>
 
-                <CardContent className="space-y-6">
-                    {/* ------------------------------------------------------- */}
-                    {/*  Not enrolled – show enable button                      */}
-                    {/* ------------------------------------------------------- */}
-                    {!actuallyEnrolled && !enrolled && (
-                        <div className="space-y-6">
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium">Phone</label>
+                                <Input
+                                    placeholder="+63 912 345 6789"
+                                    value={phone}
+                                    onChange={(e) => setPhone(e.target.value)}
+                                />
+                            </div>
+
+                            <Button onClick={saveProfile} disabled={loading} className="w-full">
+                                {loading ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Saving…
+                                    </>
+                                ) : (
+                                    "Save Changes"
+                                )}
+                            </Button>
+                        </CardContent>
+                    </Card>
+
+                    {/* ---------- Notifications ---------- */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Bell className="h-5 w-5" />
+                                Notifications
+                            </CardTitle>
+                            <CardDescription>Choose how you want to be notified</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
                             <div className="flex items-center justify-between">
-                                <p className="text-sm text-muted-foreground">
-                                    Use Google Authenticator, Authy, or any TOTP‑compatible app.
-                                </p>
+                                <div>
+                                    <p className="font-medium">Email</p>
+                                    <p className="text-sm text-muted-foreground">Updates via email</p>
+                                </div>
+                                <Switch
+                                    checked={emailNotifications}
+                                    onCheckedChange={setEmailNotifications}
+                                />
+                            </div>
 
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="font-medium">Push</p>
+                                    <p className="text-sm text-muted-foreground">Browser push</p>
+                                </div>
+                                <Switch
+                                    checked={pushNotifications}
+                                    onCheckedChange={setPushNotifications}
+                                />
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="font-medium">SMS</p>
+                                    <p className="text-sm text-muted-foreground">Text messages</p>
+                                </div>
+                                <Switch
+                                    checked={smsNotifications}
+                                    onCheckedChange={setSmsNotifications}
+                                />
+                            </div>
+
+                            <Button onClick={saveNotifications} disabled={loading} className="w-full">
+                                {loading ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Saving…
+                                    </>
+                                ) : (
+                                    "Save Preferences"
+                                )}
+                            </Button>
+                        </CardContent>
+                    </Card>
+
+                    {/* ---------- Password ---------- */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Shield className="h-5 w-5" />
+                                Password
+                            </CardTitle>
+                            <CardDescription>Change your account password</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium">Current Password</label>
+                                <Input
+                                    type="password"
+                                    value={currentPassword}
+                                    onChange={(e) => setCurrentPassword(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium">New Password</label>
+                                <Input
+                                    type="password"
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium">Confirm New Password</label>
+                                <Input
+                                    type="password"
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                />
+                            </div>
+
+                            <Button onClick={changePassword} disabled={loading} className="w-full">
+                                {loading ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Updating…
+                                    </>
+                                ) : (
+                                    "Update Password"
+                                )}
+                            </Button>
+                        </CardContent>
+                    </Card>
+
+                    {/* ---------- 2FA ---------- */}
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Shield className="h-5 w-5" />
+                                    <div>
+                                        <CardTitle>Two-Factor Authentication</CardTitle>
+                                        <CardDescription>
+                                            Secure your account with an authenticator app
+                                        </CardDescription>
+                                    </div>
+                                </div>
+                                {enrolled && (
+                                    <Badge className="bg-green-500 text-white">
+                                        <ShieldCheck className="mr-1 h-3 w-3" />
+                                        Active
+                                    </Badge>
+                                )}
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            {/* Not enrolled */}
+                            {!enrolled && !qrUrl && (
                                 <Button
                                     onClick={startEnrollment}
-                                    disabled={loading || !user}
-                                    size="sm"
-                                    type="button"
+                                    disabled={loading}
+                                    className="w-full"
                                 >
                                     {loading ? (
                                         <>
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Generating...
+                                            Generating…
                                         </>
                                     ) : (
-                                        "Enable TOTP"
+                                        "Enable 2FA"
                                     )}
                                 </Button>
-                            </div>
+                            )}
 
-                            {/* --------------------------------------------------- */}
-                            {/*  QR + verification UI                               */}
-                            {/* --------------------------------------------------- */}
+                            {/* Enrollment flow */}
                             {qrUrl && totpSecret && (
-                                <div className="space-y-6 p-6 border rounded-lg bg-muted/30">
-                                    {/* QR code */}
-                                    <div>
-                                        <div className="flex items-center justify-between mb-3">
-                                            <h4 className="font-medium">1. Scan QR Code</h4>
+                                <div className="space-y-6 rounded-lg border p-4 bg-muted/30">
+                                    {/* QR */}
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <h4 className="font-medium">1. Scan QR code</h4>
                                             <Button
-                                                size="sm"
                                                 variant="ghost"
+                                                size="sm"
                                                 onClick={startEnrollment}
-                                                type="button"
+                                                disabled={loading}
                                             >
-                                                <RefreshCw className="h-4 w-4 mr-1" />
+                                                <RefreshCw className="mr-1 h-4 w-4" />
                                                 Regenerate
                                             </Button>
                                         </div>
-                                        <div className="flex justify-center p-4 bg-white rounded-lg">
+                                        <div className="flex justify-center p-4 bg-white rounded">
                                             <QRCodeSVG value={qrUrl} size={180} />
                                         </div>
                                     </div>
 
                                     {/* Manual key */}
-                                    <div>
-                                        <h4 className="font-medium mb-2">Or Enter Manually</h4>
-                                        <code className="block p-3 bg-muted text-xs font-mono rounded break-all">
+                                    <div className="space-y-2">
+                                        <h4 className="font-medium">Or enter manually</h4>
+                                        <code className="block rounded bg-muted p-3 text-xs font-mono break-all">
                                             {getSecretKey(totpSecret)}
                                         </code>
                                     </div>
 
-                                    {/* Code input */}
-                                    <div>
-                                        <h4 className="font-medium mb-2">
-                                            2. Enter 6‑Digit Code
-                                        </h4>
-                                        <div className="flex gap-3 items-center">
+                                    {/* Verify */}
+                                    <div className="space-y-2">
+                                        <h4 className="font-medium">2. Enter 6-digit code</h4>
+                                        <div className="flex gap-2">
                                             <Input
                                                 type="text"
                                                 inputMode="numeric"
@@ -316,103 +594,138 @@ export default function SettingsPage() {
                                                     setCode(e.target.value.replace(/\D/g, ""))
                                                 }
                                                 placeholder="000000"
-                                                className="w-32 text-center text-lg font-mono"
+                                                className="w-32 text-center font-mono text-lg"
                                                 autoFocus
                                             />
                                             <Button
                                                 onClick={verifyAndEnroll}
                                                 disabled={loading || code.length !== 6}
                                                 className="bg-green-600 hover:bg-green-700"
-                                                type="button"
                                             >
                                                 {loading ? (
                                                     <>
                                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                        Verifying...
+                                                        Verifying…
                                                     </>
                                                 ) : (
                                                     "Verify & Enroll"
                                                 )}
                                             </Button>
                                         </div>
-                                        <p className="text-xs text-muted-foreground mt-2">
-                                            Enter the code **immediately** after scanning – it expires
-                                            in 30 seconds.
+                                        <p className="text-xs text-muted-foreground">
+                                            Code expires in 30 seconds.
                                         </p>
                                     </div>
                                 </div>
                             )}
-                        </div>
-                    )}
 
-                    {/* ------------------------------------------------------- */}
-                    {/*  Enrolled – show success + remove button                */}
-                    {/* ------------------------------------------------------- */}
-                    {(isEnrolled || enrolled) && (
-                        <div className="space-y-4">
-                            <Alert className="border-green-200 bg-green-50">
-                                <ShieldCheck className="h-4 w-4 text-green-600" />
-                                <AlertDescription className="text-green-800">
-                                    TOTP is <strong>active</strong> and protecting your account.
-                                </AlertDescription>
-                            </Alert>
+                            {/* Enrolled */}
+                            {enrolled && (
+                                <div className="space-y-4">
+                                    <Alert className="border-green-500/20 bg-green-500/10">
+                                        <ShieldCheck className="h-4 w-4 text-green-500" />
+                                        <AlertDescription className="text-green-500 flex items-center gap-2">
+                                            2FA is <strong>active</strong> and protecting your account.
+                                        </AlertDescription>
+                                    </Alert>
+                                    <Button
+                                        variant="destructive"
+                                        onClick={unenroll}
+                                        disabled={loading}
+                                        className="w-full"
+                                    >
+                                        {loading ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Removing…
+                                            </>
+                                        ) : (
+                                            "Remove 2FA"
+                                        )}
+                                    </Button>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
 
+                    {/* ---------- Preferences ---------- */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Palette className="h-5 w-5" />
+                                Preferences
+                            </CardTitle>
+                            <CardDescription>Customize your experience</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium">Language</label>
+                                <Select value={language} onValueChange={setLanguage}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="en">English</SelectItem>
+                                        <SelectItem value="fil">Filipino</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium">Timezone</label>
+                                <Select value={timezone} onValueChange={setTimezone}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="asia/manila">Asia/Manila</SelectItem>
+                                        <SelectItem value="utc">UTC</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <Button onClick={savePreferences} disabled={loading} className="w-full">
+                                {loading ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Saving…
+                                    </>
+                                ) : (
+                                    "Save Preferences"
+                                )}
+                            </Button>
+                        </CardContent>
+                    </Card>
+
+                    {/* ---------- Logout ---------- */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <LogOut className="h-5 w-5" />
+                                Account Actions
+                            </CardTitle>
+                            <CardDescription>Sign out of your session</CardDescription>
+                        </CardHeader>
+                        <CardContent>
                             <Button
-                                onClick={unenroll}
-                                variant="destructive"
+                                variant="outline"
+                                onClick={handleLogout}
                                 disabled={loading}
-                                className="w-full sm:w-auto"
-                                type="button"
+                                className="w-full border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
                             >
                                 {loading ? (
                                     <>
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Removing...
+                                        Signing out…
                                     </>
                                 ) : (
-                                    "Remove TOTP"
+                                    "Sign Out"
                                 )}
                             </Button>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-            <Card>
-                <CardHeader>
-                    <CardTitle>Account Actions</CardTitle>
-                    <CardDescription>
-                        Manage your session and account access.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Button
-                        onClick={handleLogout}
-                        variant="outline"
-                        disabled={loading}
-                        className="w-full sm:w-auto border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-                        type="button"
-                    >
-                        {loading ? (
-                            <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Signing out...
-                            </>
-                        ) : (
-                            "Sign Out"
-                        )}
-                    </Button>
-                </CardContent>
-            </Card>
-
-            {/* ----------------------------------------------------------- */}
-            {/*  Global error alert                                         */}
-            {/* ----------------------------------------------------------- */}
-            {error && (
-                <Alert variant="destructive">
-                    <ShieldAlert className="h-4 w-4" />
-                    <AlertDescription>{error}</AlertDescription>
-                </Alert>
-            )}
+                        </CardContent>
+                    </Card>
+                </div>
+            </main>
         </div>
     );
 }
