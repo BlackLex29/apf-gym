@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { AppSidebar } from "@/components/app-sidebar";
+import { Adminsidebar } from "@/components/Adminsidebar";
 import Chatbot from "@/components/Chatbot";
 import {
   IconUsers,
@@ -237,7 +237,7 @@ export default function UserManagementPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
-        <AppSidebar />
+        <Adminsidebar />
         <div className="flex-1 lg:ml-64 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
@@ -251,7 +251,7 @@ export default function UserManagementPage() {
   return (
     <>
       <div className="flex min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
-        <AppSidebar />
+        <Adminsidebar />
         
         <div className="flex-1 lg:ml-64 p-6 pt-16 lg:pt-6">
           <div className="max-w-7xl mx-auto space-y-6">

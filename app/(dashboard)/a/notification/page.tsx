@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { AppSidebar } from "@/components/app-sidebar";
+import { Adminsidebar } from "@/components/Adminsidebar";
 import {
   IconBell,
   IconMessageCircle,
@@ -117,19 +117,19 @@ export default function NotificationsPage() {
 
   if (loading) {
     return (
-      <AppSidebar>
+      <Adminsidebar>
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto"></div>
             <p className="mt-2 text-gray-400">Loading notifications...</p>
           </div>
         </div>
-      </AppSidebar>
+      </Adminsidebar>
     );
   }
 
   return (
-    <AppSidebar>
+    <Adminsidebar>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
@@ -278,6 +278,6 @@ export default function NotificationsPage() {
           </div>
         </div>
       </div>
-    </AppSidebar>
+    </Adminsidebar>
   );
 }

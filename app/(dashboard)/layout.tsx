@@ -1,4 +1,4 @@
-import { AppSidebar } from '@/components/app-sidebar'
+import { Adminsidebar } from '@/components/Adminsidebar'
 import { SiteHeader } from '@/components/site-header'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import React from 'react'
@@ -13,7 +13,7 @@ const layout = ({ children }: { children: React.ReactNode }) => {
                 } as React.CSSProperties
             }
         >
-            <AppSidebar variant="inset" />
+            <Adminsidebar variant="inset" />
             <SidebarInset>
                 <SiteHeader />
                 <div className="flex flex-1 flex-col">

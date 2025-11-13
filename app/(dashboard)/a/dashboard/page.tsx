@@ -3,10 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   Users, Calendar, TrendingUp, Bell, Dumbbell, Clock, DollarSign,
-  Activity, Music, Sparkles, RefreshCw, AlertCircle
+  Activity, Music, Sparkles, RefreshCw, AlertCircle, Shield, LogIn
 } from 'lucide-react';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { useRouter } from 'next/navigation';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 // Define types
 interface Stat {
@@ -32,35 +34,9 @@ interface Appointment {
   createdAt: Date;
 }
 
-interface GymMember {
-  id: string;
-  name: string;
-  email: string;
-  plan: string;
-  status: 'Active' | 'Expiring Soon';
-  checkin: string;
-  createdAt: Date;
-}
-
-interface StudioClass {
-  name: string;
-  attendees: number;
-  percentage: number;
-  icon: string;
-}
-
-interface MembershipStat {
-  plan: string;
-  count: number;
-  color: string;
-}
-
 interface DashboardData {
   stats: Stat[];
   appointments: Appointment[];
-  gymMembers: GymMember[];
-  studioClasses: StudioClass[];
-  membershipStats: MembershipStat[];
   revenue: number;
 }
 
@@ -71,11 +47,28 @@ export default function AdminDashboard() {
   const [dashboardData, setDashboardData] = useState<DashboardData>({
     stats: [],
     appointments: [],
-    gymMembers: [],
-    studioClasses: [],
-    membershipStats: [],
     revenue: 0
   });
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const router = useRouter();
+
+  // Check authentication state
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setAuthLoading(false);
+      if (user) {
+        console.log('User is authenticated:', user.email);
+        fetchDashboardData();
+      } else {
+        setLoading(false);
+        setError('Please sign in to access the dashboard');
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Helper function to calculate stats dynamically
   const calculateStats = (data: DashboardData): Stat[] => {
@@ -84,8 +77,7 @@ export default function AdminDashboard() {
     const pendingAppointments = data.appointments.filter(apt => apt.status === 'pending').length;
     const gymAppointments = data.appointments.filter(apt => apt.serviceType === 'gym').length;
     const studioAppointments = data.appointments.filter(apt => apt.serviceType === 'studio').length;
-    const totalMembers = data.gymMembers.length;
-    const activeMembers = data.gymMembers.filter(m => m.status === 'Active').length;
+    const completedAppointments = data.appointments.filter(apt => apt.status === 'completed').length;
 
     return [
       {
@@ -97,7 +89,7 @@ export default function AdminDashboard() {
         trend: 'up'
       },
       {
-        title: 'Confirmed Appointments',
+        title: 'Confirmed',
         value: confirmedAppointments.toString(),
         change: '+0%',
         icon: Users,
@@ -105,12 +97,20 @@ export default function AdminDashboard() {
         trend: 'up'
       },
       {
-        title: 'Pending Appointments',
+        title: 'Pending',
         value: pendingAppointments.toString(),
         change: '+0%',
         icon: Clock,
         color: 'bg-yellow-500',
         trend: pendingAppointments > 0 ? 'up' : 'down'
+      },
+      {
+        title: 'Completed',
+        value: completedAppointments.toString(),
+        change: '+0%',
+        icon: Shield,
+        color: 'bg-emerald-500',
+        trend: 'up'
       },
       {
         title: 'Total Revenue',
@@ -135,22 +135,6 @@ export default function AdminDashboard() {
         icon: Music,
         color: 'bg-pink-500',
         trend: 'up'
-      },
-      {
-        title: 'Total Members',
-        value: totalMembers.toString(),
-        change: '+0%',
-        icon: Users,
-        color: 'bg-cyan-500',
-        trend: 'up'
-      },
-      {
-        title: 'Active Members',
-        value: activeMembers.toString(),
-        change: '+0%',
-        icon: Activity,
-        color: 'bg-emerald-500',
-        trend: 'up'
       }
     ];
   };
@@ -167,7 +151,7 @@ export default function AdminDashboard() {
     };
 
     return appointments
-      .filter(apt => apt.status === 'confirmed' || apt.status === 'completed')
+      .filter(apt => apt.paymentStatus === 'paid' || apt.status === 'completed')
       .reduce((total, apt) => {
         const price = priceMap[apt.serviceName] || 0;
         return total + price;
@@ -175,22 +159,35 @@ export default function AdminDashboard() {
   };
 
   const fetchDashboardData = async () => {
+    if (!user) {
+      setError('Please sign in to access dashboard data');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      console.log('Fetching dashboard data...');
+      console.log('Starting to fetch dashboard data for user:', user.email);
+
+      // Check if Firebase is initialized
+      if (!db) {
+        throw new Error('Firebase is not properly initialized');
+      }
 
       // Fetch appointments from Firestore
       const appointmentsRef = collection(db, "appointments");
+      console.log('Appointments reference created');
+
       const appointmentsQuery = query(appointmentsRef, orderBy("createdAt", "desc"));
+      console.log('Query created');
+
       const appointmentsSnapshot = await getDocs(appointmentsQuery);
-      
+      console.log('Snapshot received:', appointmentsSnapshot.size, 'documents');
+
       const appointmentsData: Appointment[] = [];
       appointmentsSnapshot.forEach((doc) => {
         const data = doc.data();
-        console.log('Appointment data:', data);
-        
         appointmentsData.push({
           id: doc.id,
           clientName: data.clientName || "Unknown Client",
@@ -206,124 +203,7 @@ export default function AdminDashboard() {
         } as Appointment);
       });
 
-      console.log('Fetched appointments:', appointmentsData.length);
-
-      // Try to fetch users, but if it fails, use mock data
-      let membersData: GymMember[] = [];
-      try {
-        const usersRef = collection(db, "users");
-        const usersSnapshot = await getDocs(usersRef);
-        
-        usersSnapshot.forEach((doc) => {
-          const data = doc.data();
-          membersData.push({
-            id: doc.id,
-            name: data.displayName || data.email || "Unknown User",
-            email: data.email || "No email",
-            plan: "Monthly",
-            status: "Active",
-            checkin: "Today",
-            createdAt: data.createdAt?.toDate() || new Date()
-          } as GymMember);
-        });
-      } catch (userError) {
-        console.log('Users collection not available, using mock data');
-        // Use mock members data if users collection doesn't exist
-        membersData = [
-          {
-            id: '1',
-            name: 'John Doe',
-            email: 'john@example.com',
-            plan: 'Monthly',
-            status: 'Active',
-            checkin: 'Today',
-            createdAt: new Date()
-          },
-          {
-            id: '2',
-            name: 'Jane Smith',
-            email: 'jane@example.com',
-            plan: 'Monthly',
-            status: 'Active',
-            checkin: 'Today',
-            createdAt: new Date()
-          }
-        ];
-      }
-
-      // Calculate studio class attendance based on appointments
-      const studioClassesData: StudioClass[] = [
-        { 
-          name: 'Zumba', 
-          attendees: appointmentsData.filter(apt => 
-            apt.serviceType === 'studio' && apt.serviceName === 'Zumba Class' && 
-            (apt.status === 'confirmed' || apt.status === 'completed')
-          ).length, 
-          percentage: 0, 
-          icon: '💃' 
-        },
-        { 
-          name: 'Boxing', 
-          attendees: appointmentsData.filter(apt => 
-            apt.serviceType === 'studio' && apt.serviceName === 'Boxing Training' && 
-            (apt.status === 'confirmed' || apt.status === 'completed')
-          ).length, 
-          percentage: 0, 
-          icon: '🥊' 
-        },
-        { 
-          name: 'Yoga', 
-          attendees: appointmentsData.filter(apt => 
-            apt.serviceType === 'studio' && apt.serviceName === 'Yoga Session' && 
-            (apt.status === 'confirmed' || apt.status === 'completed')
-          ).length, 
-          percentage: 0, 
-          icon: '🧘' 
-        },
-        { 
-          name: 'Pilates', 
-          attendees: appointmentsData.filter(apt => 
-            apt.serviceType === 'studio' && apt.serviceName === 'Pilates Class' && 
-            (apt.status === 'confirmed' || apt.status === 'completed')
-          ).length, 
-          percentage: 0, 
-          icon: '💪' 
-        },
-      ];
-
-      // Calculate percentages
-      const totalStudioAttendees = studioClassesData.reduce((sum, cls) => sum + cls.attendees, 0);
-      studioClassesData.forEach(cls => {
-        cls.percentage = totalStudioAttendees > 0 ? Math.round((cls.attendees / totalStudioAttendees) * 100) : 0;
-      });
-
-      // Calculate membership stats based on appointments
-      const membershipStatsData: MembershipStat[] = [
-        { 
-          plan: 'Personal Training', 
-          count: appointmentsData.filter(apt => 
-            apt.serviceType === 'gym' && apt.serviceName === 'Personal Training' && 
-            (apt.status === 'confirmed' || apt.status === 'completed')
-          ).length, 
-          color: 'from-blue-500 to-cyan-500' 
-        },
-        { 
-          plan: 'Weight Training', 
-          count: appointmentsData.filter(apt => 
-            apt.serviceType === 'gym' && apt.serviceName === 'Weight Training' && 
-            (apt.status === 'confirmed' || apt.status === 'completed')
-          ).length, 
-          color: 'from-orange-500 to-red-500' 
-        },
-        { 
-          plan: 'Studio Classes', 
-          count: appointmentsData.filter(apt => 
-            apt.serviceType === 'studio' && 
-            (apt.status === 'confirmed' || apt.status === 'completed')
-          ).length, 
-          color: 'from-purple-500 to-pink-500' 
-        },
-      ];
+      console.log('Processed appointments:', appointmentsData.length);
 
       // Calculate revenue
       const revenue = calculateRevenue(appointmentsData);
@@ -331,9 +211,6 @@ export default function AdminDashboard() {
       const finalData: DashboardData = {
         stats: [],
         appointments: appointmentsData,
-        gymMembers: membersData,
-        studioClasses: studioClassesData,
-        membershipStats: membershipStatsData,
         revenue: revenue
       };
 
@@ -343,82 +220,91 @@ export default function AdminDashboard() {
       
       console.log('Dashboard data loaded successfully');
       console.log('Total appointments:', appointmentsData.length);
-      console.log('Total members:', membersData.length);
       console.log('Total revenue:', revenue);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching dashboard data:', err);
-      setError(`Failed to load dashboard data: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      
+      let errorMessage = 'Failed to load dashboard data. ';
+      
+      if (err.message.includes('permission-denied')) {
+        errorMessage += 'Access denied. Please check Firestore security rules or try signing in again.';
+      } else if (err.message.includes('Firebase is not properly initialized')) {
+        errorMessage += 'Firebase configuration issue.';
+      } else if (err.message.includes('network')) {
+        errorMessage += 'Network error. Check your connection.';
+      } else {
+        errorMessage += err.message;
+      }
+      
+      setError(errorMessage);
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, [timeRange]);
+  const handleSignIn = () => {
+    router.push('/login');
+  };
 
-  // Fallback to mock data if Firestore fails
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      router.push('/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  // Load mock data for testing
   const loadMockData = () => {
-    console.log('Loading mock data...');
+    console.log('Loading mock data for demonstration...');
+    
+    const mockAppointments: Appointment[] = [
+      {
+        id: '1',
+        clientName: 'Juan Dela Cruz',
+        serviceType: 'gym',
+        serviceName: 'Personal Training',
+        date: '2024-01-15',
+        time: '10:00 AM',
+        coach: 'Coach Carlos',
+        status: 'confirmed',
+        paymentMethod: 'gcash',
+        paymentStatus: 'paid',
+        createdAt: new Date()
+      },
+      {
+        id: '2',
+        clientName: 'Maria Santos',
+        serviceType: 'studio',
+        serviceName: 'Zumba Class',
+        date: '2024-01-15',
+        time: '4:00 PM',
+        status: 'pending',
+        paymentMethod: 'cash',
+        paymentStatus: 'pending',
+        createdAt: new Date()
+      },
+      {
+        id: '3',
+        clientName: 'Pedro Reyes',
+        serviceType: 'gym',
+        serviceName: 'Weight Training',
+        date: '2024-01-16',
+        time: '2:00 PM',
+        status: 'completed',
+        paymentMethod: 'cash',
+        paymentStatus: 'paid',
+        createdAt: new Date()
+      }
+    ];
+
+    const revenue = calculateRevenue(mockAppointments);
+    
     const mockData: DashboardData = {
-      stats: [
-        {
-          title: 'Total Appointments',
-          value: '0',
-          change: '+0%',
-          icon: Calendar,
-          color: 'bg-blue-500',
-          trend: 'up'
-        },
-        {
-          title: 'Confirmed Appointments',
-          value: '0',
-          change: '+0%',
-          icon: Users,
-          color: 'bg-green-500',
-          trend: 'up'
-        },
-        {
-          title: 'Pending Appointments',
-          value: '0',
-          change: '+0%',
-          icon: Clock,
-          color: 'bg-yellow-500',
-          trend: 'down'
-        },
-        {
-          title: 'Total Revenue',
-          value: '₱0',
-          change: '+0%',
-          icon: DollarSign,
-          color: 'bg-purple-500',
-          trend: 'up'
-        }
-      ],
-      appointments: [],
-      gymMembers: [
-        {
-          id: '1',
-          name: 'Demo User',
-          email: 'demo@example.com',
-          plan: 'Monthly',
-          status: 'Active',
-          checkin: 'Today',
-          createdAt: new Date()
-        }
-      ],
-      studioClasses: [
-        { name: 'Zumba', attendees: 0, percentage: 0, icon: '💃' },
-        { name: 'Boxing', attendees: 0, percentage: 0, icon: '🥊' },
-        { name: 'Yoga', attendees: 0, percentage: 0, icon: '🧘' },
-        { name: 'Pilates', attendees: 0, percentage: 0, icon: '💪' },
-      ],
-      membershipStats: [
-        { plan: 'Personal Training', count: 0, color: 'from-blue-500 to-cyan-500' },
-        { plan: 'Weight Training', count: 0, color: 'from-orange-500 to-red-500' },
-        { plan: 'Studio Classes', count: 0, color: 'from-purple-500 to-pink-500' },
-      ],
-      revenue: 0
+      stats: calculateStats({ appointments: mockAppointments, revenue, stats: [] }),
+      appointments: mockAppointments,
+      revenue: revenue
     };
     
     setDashboardData(mockData);
@@ -426,12 +312,64 @@ export default function AdminDashboard() {
     setLoading(false);
   };
 
+  const navigateToBookings = () => {
+    router.push('/a/booking');
+  };
+
+  // Show authentication loading
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="w-12 h-12 animate-spin mx-auto mb-4 text-orange-500" />
+          <p className="text-gray-400">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show sign in prompt if not authenticated
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white flex items-center justify-center">
+        <div className="text-center max-w-md mx-4">
+          <LogIn className="w-16 h-16 mx-auto mb-4 text-orange-500" />
+          <h3 className="text-xl font-bold mb-2">Authentication Required</h3>
+          <p className="text-gray-400 mb-6">
+            Please sign in to access the admin dashboard
+          </p>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={handleSignIn}
+              className="bg-orange-500 hover:bg-orange-600 px-6 py-3 rounded-lg transition-colors font-semibold"
+            >
+              Sign In
+            </button>
+            <button
+              onClick={loadMockData}
+              className="bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-lg transition-colors"
+            >
+              View Demo Data
+            </button>
+          </div>
+          <div className="mt-6 p-4 bg-gray-800 rounded-lg">
+            <p className="text-sm text-gray-400 mb-2">Firestore Rules Issue:</p>
+            <p className="text-xs text-gray-500 text-left">
+              Current rules require authentication. Either sign in or update Firestore rules to allow public access for development.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white flex items-center justify-center">
         <div className="text-center">
           <RefreshCw className="w-12 h-12 animate-spin mx-auto mb-4 text-orange-500" />
           <p className="text-gray-400">Loading dashboard data...</p>
+          <p className="text-sm text-gray-500 mt-2">User: {user.email}</p>
         </div>
       </div>
     );
@@ -440,22 +378,28 @@ export default function AdminDashboard() {
   if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
-          <p className="text-gray-400 mb-2">Failed to load dashboard data</p>
-          <p className="text-sm text-gray-500 mb-4">{error}</p>
-          <div className="flex gap-3 justify-center">
+        <div className="text-center max-w-md mx-4">
+          <AlertCircle className="w-16 h-16 mx-auto mb-4 text-red-500" />
+          <h3 className="text-xl font-bold mb-2 text-red-400">Dashboard Error</h3>
+          <p className="text-gray-400 mb-4">{error}</p>
+          <div className="flex flex-col gap-3">
             <button
               onClick={fetchDashboardData}
-              className="bg-orange-500 hover:bg-orange-600 px-6 py-2 rounded-lg transition-colors"
+              className="bg-orange-500 hover:bg-orange-600 px-6 py-3 rounded-lg transition-colors font-semibold"
             >
-              Retry
+              Try Again
             </button>
             <button
               onClick={loadMockData}
-              className="bg-gray-700 hover:bg-gray-600 px-6 py-2 rounded-lg transition-colors"
+              className="bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-lg transition-colors"
             >
               Use Demo Data
+            </button>
+            <button
+              onClick={handleSignOut}
+              className="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg transition-colors"
+            >
+              Sign Out
             </button>
           </div>
         </div>
@@ -472,10 +416,22 @@ export default function AdminDashboard() {
             <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
               Admin Dashboard
             </h1>
-            <p className="text-gray-400 mt-1">Studio & Gym Management</p>
+            <p className="text-gray-400 mt-1">
+              Welcome, {user.email} 
+              <button 
+                onClick={handleSignOut}
+                className="ml-2 text-sm text-gray-500 hover:text-white"
+              >
+                (Sign Out)
+              </button>
+            </p>
           </div>
           <div className="flex gap-3 items-center">
-            <button onClick={fetchDashboardData} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors" title="Refresh data">
+            <button 
+              onClick={fetchDashboardData} 
+              className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors" 
+              title="Refresh data"
+            >
               <RefreshCw className="w-5 h-5" />
             </button>
             <select
@@ -518,7 +474,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Additional Stats Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {dashboardData.stats.slice(4).map((stat, index) => {
             const IconComponent = stat.icon;
             return (
@@ -538,16 +494,25 @@ export default function AdminDashboard() {
           })}
         </div>
 
-        {/* Recent Appointments */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 border border-gray-700">
+        {/* Recent Appointments & Quick Actions */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+          {/* Recent Appointments */}
+          <div className="lg:col-span-2 bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 border border-gray-700">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold">Recent Appointments</h2>
-              <span className="text-sm text-gray-400">{dashboardData.appointments.length} total</span>
+              <div className="flex gap-2">
+                <span className="text-sm text-gray-400">{dashboardData.appointments.length} total</span>
+                <button 
+                  onClick={navigateToBookings}
+                  className="text-sm bg-orange-500 hover:bg-orange-600 px-3 py-1 rounded transition-colors"
+                >
+                  View All
+                </button>
+              </div>
             </div>
             <div className="space-y-4">
               {dashboardData.appointments.slice(0, 5).map((appointment) => (
-                <div key={appointment.id} className="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
+                <div key={appointment.id} className="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors">
                   <div className="flex items-center space-x-4">
                     <div className={`p-2 rounded-lg ${
                       appointment.serviceType === 'gym' ? 'bg-orange-500' : 'bg-pink-500'
@@ -557,6 +522,9 @@ export default function AdminDashboard() {
                     <div>
                       <p className="font-semibold">{appointment.clientName}</p>
                       <p className="text-sm text-gray-400">{appointment.serviceName}</p>
+                      {appointment.coach && (
+                        <p className="text-xs text-blue-400">Coach: {appointment.coach}</p>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
@@ -569,6 +537,7 @@ export default function AdminDashboard() {
                       {appointment.status}
                     </span>
                     <p className="text-sm text-gray-400 mt-1">{appointment.date}</p>
+                    <p className="text-xs text-gray-500">{appointment.time}</p>
                   </div>
                 </div>
               ))}
@@ -581,45 +550,32 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Popular Classes */}
+          {/* Quick Actions */}
           <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 border border-gray-700">
-            <h2 className="text-xl font-bold mb-6">Popular Classes</h2>
+            <h2 className="text-xl font-bold mb-6">Quick Actions</h2>
             <div className="space-y-4">
-              {dashboardData.studioClasses.map((classItem, index) => (
-                <div key={index} className="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <span className="text-2xl">{classItem.icon}</span>
-                    <div>
-                      <p className="font-semibold">{classItem.name}</p>
-                      <p className="text-sm text-gray-400">{classItem.attendees} attendees</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-lg font-bold">{classItem.percentage}%</span>
-                    <div className="w-20 h-2 bg-gray-600 rounded-full mt-1">
-                      <div 
-                        className="h-full bg-gradient-to-r from-pink-500 to-purple-500 rounded-full"
-                        style={{ width: `${classItem.percentage}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+              <button 
+                onClick={() => router.push('/a/booking')}
+                className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 p-4 rounded-lg text-left transition-all transform hover:scale-105"
+              >
+                <Calendar className="w-5 h-5 inline mr-2" />
+                Manage Bookings
+              </button>
+              <button 
+                onClick={() => router.push('/a/usermanagement')}
+                className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 p-4 rounded-lg text-left transition-all transform hover:scale-105"
+              >
+                <Users className="w-5 h-5 inline mr-2" />
+                Manage Users
+              </button>
+              <button 
+                onClick={() => router.push('/a/analytic')}
+                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 p-4 rounded-lg text-left transition-all transform hover:scale-105"
+              >
+                <TrendingUp className="w-5 h-5 inline mr-2" />
+                View Analytics
+              </button>
             </div>
-          </div>
-        </div>
-
-        {/* Membership Distribution */}
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 border border-gray-700 mb-8">
-          <h2 className="text-xl font-bold mb-6">Service Distribution</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {dashboardData.membershipStats.map((stat, index) => (
-              <div key={index} className={`bg-gradient-to-r ${stat.color} rounded-xl p-6 text-white`}>
-                <h3 className="text-lg font-bold mb-2">{stat.plan}</h3>
-                <p className="text-3xl font-bold">{stat.count}</p>
-                <p className="text-sm opacity-80">bookings</p>
-              </div>
-            ))}
           </div>
         </div>
       </div>

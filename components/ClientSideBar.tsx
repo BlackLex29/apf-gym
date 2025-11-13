@@ -8,6 +8,7 @@ import {
   IconCreditCard,
   IconUser,
   IconLogout,
+  IconSettings,
 } from "@tabler/icons-react";
 import {
   Sidebar,
@@ -46,6 +47,13 @@ const clientNavItems = [
     icon: IconCreditCard,
     id: "membership",
   },
+   {
+    title: "Settings",
+    url: "/c/settings",
+    icon: IconSettings,
+    id: "membership",
+  },
+  
 ];
 
 export function ClientSidebar() {
