@@ -24,7 +24,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/firebaseClient";
 import {
   collection,
   query,
@@ -33,6 +33,7 @@ import {
   orderBy,
   Timestamp,
 } from "firebase/firestore";
+
 
 interface AppointmentData {
   id: string;
