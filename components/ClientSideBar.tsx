@@ -3,12 +3,10 @@
 import * as React from "react";
 import {
   IconHome,
-  IconUsers,
+  IconMessageCircle,
   IconCalendar,
-  IconChartBar,
-  IconBell,
+  IconCreditCard,
   IconUser,
-  IconSettings,
   IconLogout,
 } from "@tabler/icons-react";
 import {
@@ -22,77 +20,44 @@ import {
 } from "@/components/ui/sidebar";
 import { useRouter, usePathname } from "next/navigation";
 import { Dumbbell } from "lucide-react";
-import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
-import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 
-const adminNavItems = [
+const clientNavItems = [
   {
-    title: "Home",
-    url: "/a/dashboard",
+    title: "Dashboard",
+    url: "/c/dashboard",
     icon: IconHome,
     id: "dashboard",
   },
   {
-    title: "User Management",
-    url: "/a/usermanagement",
-    icon: IconUsers,
-    id: "users",
+    title: "Inquire",
+    url: "/c/inquire",
+    icon: IconMessageCircle,
+    id: "inquire",
   },
   {
-    title: "Bookings",
-    url: "/a/booking",
+    title: "Book Appointment",
+    url: "/c/bookappointment",
     icon: IconCalendar,
-    id: "bookings",
+    id: "book",
   },
   {
-    title: "Analytics",
-    url: "/a/analytic",
-    icon: IconChartBar,
-    id: "analytics",
-  },
-  {
-    title: "Notifications",
-    url: "/a/notification",
-    icon: IconBell,
-    id: "notifications",
-  },
-  {
-    title: "Settings",
-    url: "/a/settings",
-    icon: IconSettings,
-    id: "settings",
+    title: "Monthly Membership",
+    url: "/c/membership",
+    icon: IconCreditCard,
+    id: "membership",
   },
 ];
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function ClientSidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    // Real-time listener for unread notifications count
-    const notificationsRef = collection(db, "notifications");
-    const q = query(
-      notificationsRef,
-      where("type", "==", "inquiry"),
-      where("read", "==", false),
-      orderBy("createdAt", "desc")
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setUnreadCount(snapshot.size);
-    });
-
-    return () => unsubscribe();
-  }, []);
 
   const handleNavigation = (url: string) => {
     router.push(url);
   };
 
   return (
-    <Sidebar collapsible="offcanvas" {...props}>
+    <Sidebar collapsible="offcanvas">
       {/* HEADER */}
       <SidebarHeader>
         <SidebarMenu>
@@ -100,7 +65,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <SidebarMenuButton
               asChild
               className="data-[slot=sidebar-menu-button]:!p-1.5 cursor-pointer"
-              onClick={() => handleNavigation("/a/dashboard")}
+              onClick={() => handleNavigation("/c/dashboard")}
             >
               <div className="flex items-center gap-2">
                 <Dumbbell className="!size-5 text-orange-500" />
@@ -114,9 +79,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       {/* MAIN MENU */}
       <SidebarContent>
         <SidebarMenu>
-          {adminNavItems.map((item) => {
+          {clientNavItems.map((item) => {
             const isActive = pathname === item.url;
-            const showBadge = item.id === "notifications" && unreadCount > 0;
 
             return (
               <SidebarMenuItem key={item.id}>
@@ -130,17 +94,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 >
                   <div
                     onClick={() => handleNavigation(item.url)}
-                    className="flex items-center gap-3 w-full cursor-pointer relative"
+                    className="flex items-center gap-3 w-full cursor-pointer"
                   >
                     <item.icon className="!size-5" />
                     <span>{item.title}</span>
-
-                    {/* Notification Badge */}
-                    {showBadge && (
-                      <span className="ml-auto bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center min-w-[20px]">
-                        {unreadCount > 9 ? "9+" : unreadCount}
-                      </span>
-                    )}
                   </div>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -153,18 +110,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild className="text-gray-300 hover:text-white">
+            <SidebarMenuButton
+              asChild
+              className="text-gray-300 hover:text-white"
+            >
               <div
-                onClick={() => handleNavigation("/a/profile")}
+                onClick={() => handleNavigation("/c/profile")}
                 className="flex items-center gap-3 w-full cursor-pointer"
               >
                 <IconUser className="!size-5" />
-                <span>Admin Profile</span>
+                <span>My Profile</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild className="text-red-400 hover:text-red-300">
+            <SidebarMenuButton
+              asChild
+              className="text-red-400 hover:text-red-300"
+            >
               <div
                 onClick={() => handleNavigation("/logout")}
                 className="flex items-center gap-3 w-full cursor-pointer"
