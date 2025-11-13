@@ -36,39 +36,54 @@ export default function LoginPage() {
     const [totpCode, setTotpCode] = useState("");
     const router = useRouter();
 
-    const handleFirstFactor = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        setError("");
-        setMfaResolver(null);
-        const data = new FormData(e.currentTarget);
-        const email = data.get("email") as string;
-        const password = data.get("password") as string;
-        setIsLoading(true);
+// Update the error handling in your login component
+const handleFirstFactor = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  setError("");
+  setMfaResolver(null);
+  const data = new FormData(e.currentTarget);
+  const email = data.get("email") as string;
+  const password = data.get("password") as string;
+  setIsLoading(true);
 
-        try {
-            const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            const user = userCredential.user;
+  try {
+    // Check if Firebase auth is initialized
+    if (!auth) {
+      throw new Error("Authentication service is not available. Please try again later.");
+    }
 
-            if (!user.emailVerified) {
-                await auth.signOut();
-                setError("Please verify your email first.");
-                setIsLoading(false); // ADD THIS
-                return;
-            }
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
 
-            await redirectAfterLogin(user.uid);
-        } catch (err: any) {
-            if (err.code === "auth/multi-factor-auth-required") {
-                const resolver = getMultiFactorResolver(auth, err);
-                setMfaResolver(resolver);
-                setError(""); // Clear any previous errors
-            } else {
-                setError(err.message || "Login failed");
-            }
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    if (!user.emailVerified) {
+      await auth.signOut();
+      setError("Please verify your email first.");
+      setIsLoading(false);
+      return;
+    }
+
+    await redirectAfterLogin(user.uid);
+  } catch (err: any) {
+    console.error("Login error:", err);
+    
+    // Handle specific Firebase auth errors
+    if (err.code === "auth/configuration-not-found") {
+      setError("Authentication service is currently unavailable. Please try again later.");
+    } else if (err.code === "auth/multi-factor-auth-required") {
+      const resolver = getMultiFactorResolver(auth, err);
+      setMfaResolver(resolver);
+      setError("");
+    } else if (err.code === "auth/invalid-credential") {
+      setError("Invalid email or password.");
+    } else if (err.code === "auth/too-many-requests") {
+      setError("Too many failed attempts. Please try again later.");
+    } else {
+      setError(err.message || "Login failed. Please try again.");
+    }
+  } finally {
+    setIsLoading(false);
+  }
+};
 
     const handleTotpSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
