@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -7,8 +6,8 @@ import {
     Eye,
     EyeOff,
     ArrowRight,
-    Mail,
     AlertCircle,
+    Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,53 +20,104 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import Link from "next/link";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth, db } from "@/lib/firebase";
+import {
+    signInWithEmailAndPassword,
+    getMultiFactorResolver,
+    TotpMultiFactorGenerator,
+} from "firebase/auth";
+import { auth, db } from "@/lib/firebase"; // ← Fixed: import db from same file
 import { doc, getDoc } from "firebase/firestore";
 
 export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
-    const [verificationSent, setVerificationSent] = useState(false);
-    const [unverifiedEmail, setUnverifiedEmail] = useState("");
+    const [mfaResolver, setMfaResolver] = useState<any>(null);
+    const [totpCode, setTotpCode] = useState("");
     const router = useRouter();
 
-    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFirstFactor = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setError("");
-
+        setMfaResolver(null);
         const data = new FormData(e.currentTarget);
         const email = data.get("email") as string;
         const password = data.get("password") as string;
-
         setIsLoading(true);
+
         try {
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
-            // Check if email is verified
             if (!user.emailVerified) {
                 await auth.signOut();
-                setError("Your email is not verified. Please check your inbox for the verification link sent during registration, or go back to the registration page to resend it.");
+                setError("Please verify your email first.");
+                setIsLoading(false); // ADD THIS
                 return;
             }
 
-            // Get user role from Firestore
-            const userDoc = await getDoc(doc(db, "users", user.uid));
-            const userData = userDoc.data();
-            const role = userData?.role || "client";
+            await redirectAfterLogin(user.uid);
+        } catch (err: any) {
+            if (err.code === "auth/multi-factor-auth-required") {
+                const resolver = getMultiFactorResolver(auth, err);
+                setMfaResolver(resolver);
+                setError(""); // Clear any previous errors
+            } else {
+                setError(err.message || "Login failed");
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
-            // Redirect based on role
+    const handleTotpSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!mfaResolver || totpCode.length !== 6) return;
+        setIsLoading(true);
+        setError(""); // Clear previous errors
+
+        try {
+            const hint = mfaResolver.hints.find(
+                (h: any) => h.factorId === TotpMultiFactorGenerator.FACTOR_ID
+            );
+            if (!hint) throw new Error("TOTP not enrolled");
+
+            const assertion = TotpMultiFactorGenerator.assertionForSignIn(
+                hint.uid,
+                totpCode
+            );
+
+            const userCredential = await mfaResolver.resolveSignIn(assertion);
+            await redirectAfterLogin(userCredential.user.uid);
+        } catch (err: any) {
+            console.error("TOTP verification error:", err); // ADD: Better logging
+            const msg = err?.message || "";
+            if (msg.includes("INVALID_CODE") || msg.includes("EXPIRED")) {
+                setError("Invalid or expired code. Try again.");
+            } else {
+                setError(err.message || "Verification failed. Please try again.");
+            }
+            setTotpCode("");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+
+
+    const redirectAfterLogin = async (uid: string) => {
+        try {
+            const userDoc = await getDoc(doc(db, "users", uid));
+            const role = userDoc.data()?.role || "client";
+
             if (role === "admin" || role === "owner") {
                 router.push("/a/dashboard");
             } else {
                 router.push("/c/dashboard");
             }
-        } catch (err: any) {
-            setError(err.message || "Login failed");
-        } finally {
-            setIsLoading(false);
+        } catch (err) {
+            console.error("Failed to fetch user role:", err);
+            router.push("/c/dashboard"); // fallback
         }
     };
 
@@ -85,7 +135,6 @@ export default function LoginPage() {
                             <p className="text-orange-500 font-semibold">APF Tanauan</p>
                         </div>
                     </div>
-
                     <div className="space-y-4">
                         <h2 className="text-3xl font-bold text-foreground leading-tight">
                             <span className="text-balance">Welcome back!</span>
@@ -98,7 +147,6 @@ export default function LoginPage() {
                             Sign in to book sessions, chat with coaches, and track your progress.
                         </p>
                     </div>
-
                     <Button
                         variant="outline"
                         onClick={() => router.push("/")}
@@ -112,106 +160,107 @@ export default function LoginPage() {
                 <Card className="bg-card/90 border-orange-500/20 backdrop-blur-sm">
                     <CardHeader>
                         <CardTitle className="text-2xl font-bold text-center">
-                            Sign In
+                            {mfaResolver ? "Enter Authenticator Code" : "Sign In"}
                         </CardTitle>
                         <CardDescription className="text-center">
-                            Enter your credentials to access your account
+                            {mfaResolver
+                                ? "Open your authenticator app and enter the 6-digit code"
+                                : "Enter your credentials to access your account"}
                         </CardDescription>
                     </CardHeader>
-
                     <CardContent>
-                        {/* Error/Success Alert */}
                         {error && (
-                            <Alert
-                                className={`mb-4 ${verificationSent
-                                    ? 'border-blue-500 bg-blue-500/10'
-                                    : 'border-destructive bg-destructive/10'
-                                    }`}
-                            >
-                                {verificationSent ? (
-                                    <Mail className="h-4 w-4 text-blue-500" />
-                                ) : (
-                                    <AlertCircle className="h-4 w-4 text-destructive" />
-                                )}
-                                <AlertDescription className={verificationSent ? 'text-blue-500' : 'text-destructive'}>
+                            <Alert className="mb-4 border-destructive bg-destructive/10">
+                                <AlertCircle className="h-4 w-4 text-destructive" />
+                                <AlertDescription className="text-destructive">
                                     {error}
                                 </AlertDescription>
                             </Alert>
                         )}
 
-                        {/* Verification Notice */}
-                        {verificationSent && unverifiedEmail && (
-                            <Alert className="mb-4 border-orange-500 bg-orange-500/10">
-                                <Mail className="h-4 w-4 text-orange-500" />
-                                <AlertDescription className="text-orange-500">
-                                    <p className="mb-2">
-                                        We've sent a verification link to <strong>{unverifiedEmail}</strong>
-                                    </p>
-                                    <p className="text-sm mb-3">
-                                        Check your inbox and click the link to verify your account.
-                                        Don't forget to check your spam folder!
-                                    </p>
-                                </AlertDescription>
-                            </Alert>
-                        )}
-
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            {/* Email */}
-                            <Input
-                                name="email"
-                                type="email"
-                                placeholder="Email address"
-                                required
-                                className="bg-input border-border text-foreground placeholder-muted-foreground focus:border-orange-500"
-                            />
-
-                            {/* Password */}
-                            <div className="relative">
+                        {/* TOTP Form */}
+                        {mfaResolver ? (
+                            <form onSubmit={handleTotpSubmit} className="space-y-4">
+                                <div className="flex justify-center">
+                                    <Shield className="h-12 w-12 text-orange-500" />
+                                </div>
                                 <Input
-                                    name="password"
-                                    type={showPassword ? "text" : "password"}
-                                    placeholder="Password"
-                                    required
-                                    className="bg-input border-border text-foreground placeholder-muted-foreground focus:border-orange-500 pr-10"
+                                    type="text"
+                                    inputMode="numeric"
+                                    maxLength={6}
+                                    value={totpCode}
+                                    onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+                                    placeholder="000000"
+                                    className="text-center text-2xl tracking-widest font-mono h-14"
+                                    autoFocus
                                 />
+                                <Button
+                                    type="submit"
+                                    className="w-full bg-orange-500 hover:bg-orange-600 text-black font-semibold"
+                                    disabled={isLoading || totpCode.length !== 6}
+                                >
+                                    {isLoading ? "Verifying..." : "Verify & Sign In"}
+                                    <ArrowRight className="ml-2 h-4 w-4" />
+                                </Button>
                                 <button
                                     type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                    onClick={() => {
+                                        setMfaResolver(null);
+                                        setTotpCode("");
+                                        setError("");
+                                    }}
+                                    className="text-sm text-orange-500 hover:text-orange-400 underline w-full text-center"
                                 >
-                                    {showPassword ? (
-                                        <EyeOff className="h-4 w-4" />
-                                    ) : (
-                                        <Eye className="h-4 w-4" />
-                                    )}
+                                    Back to email login
                                 </button>
-                            </div>
-
-                            <div className="text-right">
-                                <Link
-                                    href="/forgot-password"
-                                    className="text-sm text-orange-500 hover:text-orange-400"
+                            </form>
+                        ) : (
+                            /* Email + Password Form */
+                            <form onSubmit={handleFirstFactor} className="space-y-4">
+                                <Input
+                                    name="email"
+                                    type="email"
+                                    placeholder="Email address"
+                                    required
+                                    className="bg-input border-border text-foreground placeholder-muted-foreground focus:border-orange-500"
+                                />
+                                <div className="relative">
+                                    <Input
+                                        name="password"
+                                        type={showPassword ? "text" : "password"}
+                                        placeholder="Password"
+                                        required
+                                        className="bg-input border-border text-foreground placeholder-muted-foreground focus:border-orange-500 pr-10"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                    >
+                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </button>
+                                </div>
+                                <div className="text-right">
+                                    <Link href="/forgot-password" className="text-sm text-orange-500 hover:text-orange-400">
+                                        Forgot password?
+                                    </Link>
+                                </div>
+                                <Button
+                                    type="submit"
+                                    className="w-full bg-orange-500 hover:bg-orange-600 text-black font-semibold transition-all duration-300 transform hover:scale-105"
+                                    disabled={isLoading}
                                 >
-                                    Forgot password?
-                                </Link>
-                            </div>
-
-                            <Button
-                                type="submit"
-                                className="w-full bg-orange-500 hover:bg-orange-600 text-black font-semibold transition-all duration-300 transform hover:scale-105"
-                                disabled={isLoading}
-                            >
-                                {isLoading ? "Signing In..." : "Sign In"}
-                                <ArrowRight className="ml-2 h-4 w-4" />
-                            </Button>
-
-                            <p className="text-center text-sm text-muted-foreground">
-                                Don't have an account?{" "}
-                                <Link href="/register" className="text-orange-500 hover:text-orange-400">
-                                    Sign up
-                                </Link>
-                            </p>
-                        </form>
+                                    {isLoading ? "Signing In..." : "Sign In"}
+                                    <ArrowRight className="ml-2 h-4 w-4" />
+                                </Button>
+                                <p className="text-center text-sm text-muted-foreground">
+                                    Don't have an account?{" "}
+                                    <Link href="/register" className="text-orange-500 hover:text-orange-400">
+                                        Sign up
+                                    </Link>
+                                </p>
+                            </form>
+                        )}
                     </CardContent>
                 </Card>
             </div>
