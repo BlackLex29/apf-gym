@@ -1,7 +1,5 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { Adminsidebar } from "@/components/Adminsidebar";
-import Chatbot from "@/components/Chatbot";
 import {
   IconUsers,
   IconUserPlus,
@@ -12,8 +10,6 @@ import {
   IconCheck,
   IconX,
 } from "@tabler/icons-react";
-import { db } from "@/lib/firebase";
-import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc } from "firebase/firestore";
 
 interface Coach {
   id: string;
@@ -27,13 +23,45 @@ interface Coach {
 }
 
 export default function UserManagementPage() {
-  const [coaches, setCoaches] = useState<Coach[]>([]);
+  const [coaches, setCoaches] = useState<Coach[]>([
+    {
+      id: "1",
+      name: "Coach Luis",
+      email: "marquez.luismanuel08@gmail.com",
+      phone: "09496208191",
+      specialty: "boxing",
+      experience: "10 years",
+      status: "inactive",
+      dateCreated: "2025-11-15"
+    },
+    {
+      id: "2",
+      name: "Gene",
+      email: "genedalida@gmail.com",
+      phone: "09736364233",
+      specialty: "gym",
+      experience: "5 years",
+      status: "active",
+      dateCreated: "2025-11-13"
+    },
+    {
+      id: "3",
+      name: "Rafa Pogi",
+      email: "rafaellevist0513@gmail.com",
+      phone: "09920370749",
+      specialty: "gym",
+      experience: "5 years",
+      status: "active",
+      dateCreated: "2025-11-14"
+    }
+  ]);
+  
   const [showAddForm, setShowAddForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterSpecialty, setFilterSpecialty] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [editingCoach, setEditingCoach] = useState<Coach | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const [coachForm, setCoachForm] = useState({
     name: "",
@@ -51,70 +79,31 @@ export default function UserManagementPage() {
     { value: "zumba", label: "Zumba", color: "text-pink-400" }
   ];
 
-  // Load coaches from Firestore
-  useEffect(() => {
-    loadCoaches();
-  }, []);
-
-  const loadCoaches = async () => {
-    try {
-      setLoading(true);
-      const coachesRef = collection(db, "coaches");
-      const querySnapshot = await getDocs(coachesRef);
-      
-      const coachesData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Coach[];
-      
-      setCoaches(coachesData);
-    } catch (error) {
-      console.error("Error loading coaches:", error);
-      alert("Failed to load coaches. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleAddCoach = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    try {
-      const coachesRef = collection(db, "coaches");
-      const newCoachData = {
-        name: coachForm.name,
-        email: coachForm.email,
-        phone: coachForm.phone,
-        specialty: coachForm.specialty,
-        experience: coachForm.experience,
-        status: coachForm.status,
-        dateCreated: new Date().toISOString().split('T')[0]
-      };
+    const newCoach: Coach = {
+      id: Date.now().toString(),
+      name: coachForm.name,
+      email: coachForm.email,
+      phone: coachForm.phone,
+      specialty: coachForm.specialty,
+      experience: coachForm.experience,
+      status: coachForm.status,
+      dateCreated: new Date().toISOString().split('T')[0]
+    };
 
-      const docRef = await addDoc(coachesRef, newCoachData);
-      
-      // Add the new coach to local state with the Firestore document ID
-      const newCoach: Coach = {
-        id: docRef.id,
-        ...newCoachData
-      };
-
-      setCoaches([...coaches, newCoach]);
-      setCoachForm({
-        name: "",
-        email: "",
-        phone: "",
-        specialty: "gym",
-        experience: "",
-        status: "active"
-      });
-      setShowAddForm(false);
-      
-      alert("Coach added successfully!");
-    } catch (error) {
-      console.error("Error adding coach:", error);
-      alert("Failed to add coach. Please try again.");
-    }
+    setCoaches([...coaches, newCoach]);
+    setCoachForm({
+      name: "",
+      email: "",
+      phone: "",
+      specialty: "gym",
+      experience: "",
+      status: "active"
+    });
+    setShowAddForm(false);
+    alert("Coach added successfully!");
   };
 
   const handleEditCoach = (coach: Coach) => {
@@ -133,88 +122,55 @@ export default function UserManagementPage() {
     e.preventDefault();
     
     if (editingCoach) {
-      try {
-        const coachRef = doc(db, "coaches", editingCoach.id);
-        await updateDoc(coachRef, {
-          name: coachForm.name,
-          email: coachForm.email,
-          phone: coachForm.phone,
-          specialty: coachForm.specialty,
-          experience: coachForm.experience,
-          status: coachForm.status
-        });
-        
-        // Update local state
-        const updatedCoaches = coaches.map(coach =>
-          coach.id === editingCoach.id 
-            ? { 
-                ...coach, 
-                name: coachForm.name,
-                email: coachForm.email,
-                phone: coachForm.phone,
-                specialty: coachForm.specialty,
-                experience: coachForm.experience,
-                status: coachForm.status
-              }
-            : coach
-        );
-        
-        setCoaches(updatedCoaches);
-        setEditingCoach(null);
-        setCoachForm({
-          name: "",
-          email: "",
-          phone: "",
-          specialty: "gym",
-          experience: "",
-          status: "active"
-        });
-        
-        alert("Coach updated successfully!");
-      } catch (error) {
-        console.error("Error updating coach:", error);
-        alert("Failed to update coach. Please try again.");
-      }
+      const updatedCoaches = coaches.map(coach =>
+        coach.id === editingCoach.id 
+          ? { 
+              ...coach, 
+              name: coachForm.name,
+              email: coachForm.email,
+              phone: coachForm.phone,
+              specialty: coachForm.specialty,
+              experience: coachForm.experience,
+              status: coachForm.status
+            }
+          : coach
+      );
+      
+      setCoaches(updatedCoaches);
+      setEditingCoach(null);
+      setCoachForm({
+        name: "",
+        email: "",
+        phone: "",
+        specialty: "gym",
+        experience: "",
+        status: "active"
+      });
+      
+      alert("Coach updated successfully!");
     }
   };
 
   const handleDeleteCoach = async (id: string) => {
     if (confirm("Are you sure you want to delete this coach?")) {
-      try {
-        await deleteDoc(doc(db, "coaches", id));
-        setCoaches(coaches.filter(coach => coach.id !== id));
-        alert("Coach deleted successfully!");
-      } catch (error) {
-        console.error("Error deleting coach:", error);
-        alert("Failed to delete coach. Please try again.");
-      }
+      setCoaches(coaches.filter(coach => coach.id !== id));
+      alert("Coach deleted successfully!");
     }
   };
 
   const handleStatusToggle = async (id: string) => {
-    try {
-      const coach = coaches.find(c => c.id === id);
-      if (!coach) return;
+    const coach = coaches.find(c => c.id === id);
+    if (!coach) return;
 
-      const newStatus = coach.status === "active" ? "inactive" : "active";
-      const coachRef = doc(db, "coaches", id);
-      
-      await updateDoc(coachRef, {
-        status: newStatus
-      });
-
-      // Update local state
-      setCoaches(coaches.map(coach =>
-        coach.id === id
-          ? { ...coach, status: newStatus }
-          : coach
-      ));
-      
-      alert(`Coach status updated to ${newStatus}`);
-    } catch (error) {
-      console.error("Error updating coach status:", error);
-      alert("Failed to update coach status. Please try again.");
-    }
+    const newStatus = coach.status === "active" ? "inactive" : "active";
+    
+    setCoaches(coaches.map(coach =>
+      coach.id === id
+        ? { ...coach, status: newStatus }
+        : coach
+    ));
+    
+    alert(`Coach status updated to ${newStatus}`);
   };
 
   const filteredCoaches = coaches.filter(coach => {
@@ -236,13 +192,10 @@ export default function UserManagementPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
-        <Adminsidebar />
-        <div className="flex-1 lg:ml-64 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
-            <p className="mt-4 text-gray-400">Loading coaches...</p>
-          </div>
+      <div className="flex min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
+          <p className="mt-4 text-gray-400">Loading coaches...</p>
         </div>
       </div>
     );
@@ -250,15 +203,13 @@ export default function UserManagementPage() {
 
   return (
     <>
-      <div className="flex min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
-        <Adminsidebar />
-        
-        <div className="flex-1 lg:ml-64 p-6 pt-16 lg:pt-6">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
+        <div className="p-6">
           <div className="max-w-7xl mx-auto space-y-6">
-            {/* Header */}
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            {/* Header - Centered */}
+            <div className="flex flex-col items-center text-center lg:flex-row lg:items-center lg:justify-between lg:text-left gap-4">
               <div>
-                <h1 className="text-3xl font-bold flex items-center gap-3">
+                <h1 className="text-3xl font-bold flex items-center justify-center lg:justify-start gap-3">
                   <IconUsers className="size-8 text-orange-400" />
                   Coach Management
                 </h1>
@@ -269,7 +220,7 @@ export default function UserManagementPage() {
               
               <button
                 onClick={() => setShowAddForm(true)}
-                className="bg-orange-500 hover:bg-orange-600 px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-colors"
+                className="bg-orange-500 hover:bg-orange-600 px-6 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors"
               >
                 <IconUserPlus className="size-5" />
                 Add New Coach
@@ -330,36 +281,36 @@ export default function UserManagementPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-700">
-                      <th className="text-left p-4 font-semibold">Coach</th>
-                      <th className="text-left p-4 font-semibold">Specialty</th>
-                      <th className="text-left p-4 font-semibold">Experience</th>
-                      <th className="text-left p-4 font-semibold">Contact</th>
-                      <th className="text-left p-4 font-semibold">Status</th>
-                      <th className="text-left p-4 font-semibold">Date Created</th>
-                      <th className="text-left p-4 font-semibold">Actions</th>
+                      <th className="text-center p-4 font-semibold">Coach</th>
+                      <th className="text-center p-4 font-semibold">Specialty</th>
+                      <th className="text-center p-4 font-semibold">Experience</th>
+                      <th className="text-center p-4 font-semibold">Contact</th>
+                      <th className="text-center p-4 font-semibold">Status</th>
+                      <th className="text-center p-4 font-semibold">Date Created</th>
+                      <th className="text-center p-4 font-semibold">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredCoaches.map((coach) => (
                       <tr key={coach.id} className="border-b border-gray-700/50 hover:bg-gray-700/20">
                         <td className="p-4">
-                          <div>
+                          <div className="text-center">
                             <p className="font-semibold">{coach.name}</p>
                             <p className="text-sm text-gray-400">{coach.email}</p>
                           </div>
                         </td>
-                        <td className="p-4">
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${getSpecialtyColor(coach.specialty)} bg-gray-700/50`}>
+                        <td className="p-4 text-center">
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${getSpecialtyColor(coach.specialty)} bg-gray-700/50 inline-block`}>
                             {getSpecialtyLabel(coach.specialty)}
                           </span>
                         </td>
-                        <td className="p-4">
+                        <td className="p-4 text-center">
                           <span className="text-gray-300">{coach.experience}</span>
                         </td>
-                        <td className="p-4">
+                        <td className="p-4 text-center">
                           <span className="text-gray-300">{coach.phone}</span>
                         </td>
-                        <td className="p-4">
+                        <td className="p-4 text-center">
                           <button
                             onClick={() => handleStatusToggle(coach.id)}
                             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
@@ -371,11 +322,11 @@ export default function UserManagementPage() {
                             {coach.status === "active" ? "Active" : "Inactive"}
                           </button>
                         </td>
-                        <td className="p-4">
+                        <td className="p-4 text-center">
                           <span className="text-gray-400 text-sm">{coach.dateCreated}</span>
                         </td>
                         <td className="p-4">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center justify-center gap-2">
                             <button
                               onClick={() => handleEditCoach(coach)}
                               className="p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors"
@@ -406,25 +357,25 @@ export default function UserManagementPage() {
               </div>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
+            {/* Stats - Centered */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700 text-center">
                 <p className="text-gray-400 text-sm">Total Coaches</p>
                 <p className="text-2xl font-bold text-white">{coaches.length}</p>
               </div>
-              <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
+              <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700 text-center">
                 <p className="text-gray-400 text-sm">Active Coaches</p>
                 <p className="text-2xl font-bold text-green-400">
                   {coaches.filter(c => c.status === "active").length}
                 </p>
               </div>
-              <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
+              <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700 text-center">
                 <p className="text-gray-400 text-sm">Gym Coaches</p>
                 <p className="text-2xl font-bold text-orange-400">
                   {coaches.filter(c => c.specialty === "gym").length}
                 </p>
               </div>
-              <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
+              <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700 text-center">
                 <p className="text-gray-400 text-sm">Class Coaches</p>
                 <p className="text-2xl font-bold text-blue-400">
                   {coaches.filter(c => c.specialty !== "gym").length}
@@ -440,14 +391,14 @@ export default function UserManagementPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800 rounded-2xl p-8 max-w-md w-full border border-gray-700">
             <div className="space-y-6">
-              <h2 className="text-2xl font-bold">
+              <h2 className="text-2xl font-bold text-center">
                 {editingCoach ? "Edit Coach" : "Add New Coach"}
               </h2>
 
               <form onSubmit={editingCoach ? handleUpdateCoach : handleAddCoach}>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                    <label className="block text-sm font-medium text-gray-400 mb-2 text-center">
                       Full Name *
                     </label>
                     <input
@@ -455,13 +406,13 @@ export default function UserManagementPage() {
                       required
                       value={coachForm.name}
                       onChange={(e) => setCoachForm({ ...coachForm, name: e.target.value })}
-                      className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-center"
                       placeholder="Enter coach's full name"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                    <label className="block text-sm font-medium text-gray-400 mb-2 text-center">
                       Email Address *
                     </label>
                     <input
@@ -469,13 +420,13 @@ export default function UserManagementPage() {
                       required
                       value={coachForm.email}
                       onChange={(e) => setCoachForm({ ...coachForm, email: e.target.value })}
-                      className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-center"
                       placeholder="Enter email address"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                    <label className="block text-sm font-medium text-gray-400 mb-2 text-center">
                       Phone Number *
                     </label>
                     <input
@@ -483,20 +434,20 @@ export default function UserManagementPage() {
                       required
                       value={coachForm.phone}
                       onChange={(e) => setCoachForm({ ...coachForm, phone: e.target.value })}
-                      className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-center"
                       placeholder="Enter phone number"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                    <label className="block text-sm font-medium text-gray-400 mb-2 text-center">
                       Specialty *
                     </label>
                     <select
                       required
                       value={coachForm.specialty}
                       onChange={(e) => setCoachForm({ ...coachForm, specialty: e.target.value as any })}
-                      className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-center"
                     >
                       {specialties.map(specialty => (
                         <option key={specialty.value} value={specialty.value}>
@@ -507,7 +458,7 @@ export default function UserManagementPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                    <label className="block text-sm font-medium text-gray-400 mb-2 text-center">
                       Experience *
                     </label>
                     <input
@@ -515,19 +466,19 @@ export default function UserManagementPage() {
                       required
                       value={coachForm.experience}
                       onChange={(e) => setCoachForm({ ...coachForm, experience: e.target.value })}
-                      className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-center"
                       placeholder="e.g., 5 years"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                    <label className="block text-sm font-medium text-gray-400 mb-2 text-center">
                       Status
                     </label>
                     <select
                       value={coachForm.status}
                       onChange={(e) => setCoachForm({ ...coachForm, status: e.target.value as any })}
-                      className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-center"
                     >
                       <option value="active">Active</option>
                       <option value="inactive">Inactive</option>
@@ -568,8 +519,6 @@ export default function UserManagementPage() {
           </div>
         </div>
       )}
-
-      <Chatbot />
     </>
   );
 }

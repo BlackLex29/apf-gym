@@ -1,6 +1,5 @@
 "use client";
 import React, { useState } from "react";
-import { ClientSidebar } from "@/components/ClientSideBar";
 import Chatbot from "@/components/Chatbot";
 import {
   IconCreditCard,
@@ -74,7 +73,7 @@ export default function MembershipPage() {
     // Here you would typically send the membership data to your backend
     const selectedPlanData = membershipPlans.find(plan => plan.id === selectedPlan);
     alert(`Membership application submitted!\n\nPlan: ${selectedPlanData?.name}\nPrice: ${selectedPlanData?.price}\nName: ${memberDetails.name}\nEmail: ${memberDetails.email}`);
-    
+
     // Reset form
     setSelectedPlan(null);
     setMemberDetails({
@@ -90,8 +89,6 @@ export default function MembershipPage() {
   return (
     <>
       <div className="flex min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
-        <ClientSidebar />
-        
         <div className="flex-1 lg:ml-64 flex items-center justify-center p-6 pt-16 lg:pt-6">
           <div className="w-full max-w-6xl mx-auto">
             <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
@@ -111,13 +108,12 @@ export default function MembershipPage() {
                 {membershipPlans.map((plan) => (
                   <div
                     key={plan.id}
-                    className={`relative bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-8 border-2 transition-all cursor-pointer ${
-                      selectedPlan === plan.id
-                        ? plan.id === "student" 
-                          ? "border-green-500 shadow-xl shadow-green-500/20"
-                          : "border-orange-500 shadow-xl shadow-orange-500/20"
-                        : "border-gray-700 hover:border-orange-500/50"
-                    }`}
+                    className={`relative bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-8 border-2 transition-all cursor-pointer ${selectedPlan === plan.id
+                      ? plan.id === "student"
+                        ? "border-green-500 shadow-xl shadow-green-500/20"
+                        : "border-orange-500 shadow-xl shadow-orange-500/20"
+                      : "border-gray-700 hover:border-orange-500/50"
+                      }`}
                     onClick={() => handlePlanSelect(plan.id)}
                   >
                     {/* Popular Badge */}
@@ -172,13 +168,12 @@ export default function MembershipPage() {
 
                       {/* Select Button */}
                       <button
-                        className={`w-full py-3 rounded-lg font-semibold transition-all ${
-                          selectedPlan === plan.id
-                            ? plan.id === "student"
-                              ? "bg-green-500 hover:bg-green-600"
-                              : "bg-orange-500 hover:bg-orange-600"
-                            : "bg-gray-700 hover:bg-gray-600"
-                        }`}
+                        className={`w-full py-3 rounded-lg font-semibold transition-all ${selectedPlan === plan.id
+                          ? plan.id === "student"
+                            ? "bg-green-500 hover:bg-green-600"
+                            : "bg-orange-500 hover:bg-orange-600"
+                          : "bg-gray-700 hover:bg-gray-600"
+                          }`}
                       >
                         {selectedPlan === plan.id ? "Selected" : "Select Plan"}
                       </button>
@@ -221,7 +216,7 @@ export default function MembershipPage() {
                         onChange={(e) => setMemberDetails({ ...memberDetails, phone: e.target.value })}
                         className="bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
                       />
-                      
+
                       {/* Student ID Field - Only show for student plan */}
                       {selectedPlan === "student" && (
                         <input
@@ -316,7 +311,7 @@ export default function MembershipPage() {
               <p className="text-gray-400">
                 Are you sure you want to apply for this membership?
               </p>
-              
+
               <div className="bg-gray-700/50 rounded-lg p-4 space-y-2 text-sm">
                 <p><span className="text-gray-400">Plan:</span> {membershipPlans.find(p => p.id === selectedPlan)?.name}</p>
                 <p><span className="text-gray-400">Price:</span> {membershipPlans.find(p => p.id === selectedPlan)?.price}</p>

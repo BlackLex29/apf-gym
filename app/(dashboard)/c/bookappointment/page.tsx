@@ -1,6 +1,5 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { ClientSidebar } from "@/components/ClientSideBar";
 import Chatbot from "@/components/Chatbot";
 import {
   IconCalendar,
@@ -127,17 +126,17 @@ export default function BookAppointmentPage() {
     try {
       const appointmentsRef = collection(db, "appointments");
       const q = query(
-        appointmentsRef, 
+        appointmentsRef,
         where("userId", "==", userId),
         orderBy("createdAt", "desc")
       );
       const querySnapshot = await getDocs(q);
-      
+
       const appointments = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as UserAppointment[];
-      
+
       setUserAppointments(appointments);
     } catch (error) {
       console.error("Error loading user appointments:", error);
@@ -154,7 +153,7 @@ export default function BookAppointmentPage() {
         where("status", "==", "active") // Only load active coaches
       );
       const querySnapshot = await getDocs(q);
-      
+
       const coachesData: Coach[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
@@ -166,7 +165,7 @@ export default function BookAppointmentPage() {
           status: data.status
         } as Coach);
       });
-      
+
       setCoaches(coachesData);
     } catch (error) {
       console.error("Error loading coaches:", error);
@@ -242,11 +241,11 @@ export default function BookAppointmentPage() {
   // Get filtered coaches based on service type
   const getFilteredCoaches = (serviceType: "gym" | "studio" | null) => {
     if (!serviceType) return [];
-    
+
     if (serviceType === "gym") {
       return coaches.filter(coach => coach.specialty === "gym");
     } else if (serviceType === "studio") {
-      return coaches.filter(coach => 
+      return coaches.filter(coach =>
         ["karate", "boxing", "zumba"].includes(coach.specialty)
       );
     }
@@ -267,17 +266,17 @@ export default function BookAppointmentPage() {
         try {
           const appointmentsRef = collection(db, "appointments");
           const q = query(
-            appointmentsRef, 
+            appointmentsRef,
             where("date", "==", selectedDate),
             where("status", "in", ["pending", "confirmed"])
           );
           const querySnapshot = await getDocs(q);
-          
+
           const slots = querySnapshot.docs.map(doc => {
             const data = doc.data();
             return `${selectedDate}_${data.time}`;
           });
-          
+
           setBookedSlots(slots);
         } catch (error) {
           console.error("Error loading booked slots:", error);
@@ -311,7 +310,7 @@ export default function BookAppointmentPage() {
 
   const handleBookingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Check if user is authenticated
     if (!user) {
       alert("Please sign in to book an appointment.");
@@ -337,9 +336,9 @@ export default function BookAppointmentPage() {
     }
 
     // Validate coach selection for Personal Training
-    if (selectedService === "gym" && 
-        bookingDetails.notes === "Personal Training" && 
-        !selectedCoach) {
+    if (selectedService === "gym" &&
+      bookingDetails.notes === "Personal Training" &&
+      !selectedCoach) {
       alert("Please select a coach for Personal Training.");
       return;
     }
@@ -386,35 +385,35 @@ export default function BookAppointmentPage() {
 
       const appointmentsRef = collection(db, "appointments");
       await addDoc(appointmentsRef, appointmentData);
-      
+
       return true;
     } catch (error: any) {
       console.error("Error saving appointment:", error);
-      
+
       if (error.code === 'permission-denied') {
         alert('Permission denied. Please check if you are logged in.');
       } else {
         alert('Failed to save appointment: ' + error.message);
       }
-      
+
       return false;
     }
   };
 
   const confirmBooking = async () => {
     setIsSubmitting(true);
-    
+
     try {
       const success = await saveAppointmentToFirestore();
-      
+
       if (success) {
         setBookingSuccess(true);
-        
+
         // Reload user appointments after successful booking
         if (user) {
           await loadUserAppointments(user.uid);
         }
-        
+
         // Reset form
         setSelectedService(null);
         setSelectedDate("");
@@ -428,7 +427,7 @@ export default function BookAppointmentPage() {
           phone: "",
           notes: "",
         });
-        
+
         setTimeout(() => {
           setBookingSuccess(false);
         }, 5000);
@@ -455,21 +454,21 @@ export default function BookAppointmentPage() {
   const getNext7Days = () => {
     const days = [];
     const today = new Date();
-    
+
     for (let i = 0; i < 7; i++) {
       const date = new Date(today);
       date.setDate(today.getDate() + i);
-      
+
       const formattedDate = date.toISOString().split('T')[0];
       const displayDate = date.toLocaleDateString('en-US', {
         weekday: 'short',
         month: 'short',
         day: 'numeric'
       });
-      
+
       days.push({ value: formattedDate, display: displayDate });
     }
-    
+
     return days;
   };
 
@@ -502,19 +501,6 @@ export default function BookAppointmentPage() {
     return specialtyLabels[specialty] || specialty;
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
-        <ClientSidebar />
-        <div className="flex-1 lg:ml-64 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
-            <p className="mt-4 text-gray-400">Loading...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <>
@@ -535,8 +521,6 @@ export default function BookAppointmentPage() {
       )}
 
       <div className="flex min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
-        <ClientSidebar />
-        
         <div className="flex-1 lg:ml-64 flex flex-col p-6 pt-16 lg:pt-6">
           <div className="w-full max-w-6xl mx-auto flex-1">
             <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
@@ -564,10 +548,37 @@ export default function BookAppointmentPage() {
                 )}
               </div>
 
+              {/* Service Type Selection */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div
+                  className={`bg-gray-800/50 rounded-2xl p-8 border-2 transition-all cursor-pointer text-center ${selectedService === "gym"
+                    ? "border-orange-500 bg-orange-500/10"
+                    : "border-gray-700 hover:border-orange-500/50"
+                    }`}
+                  onClick={() => handleServiceSelect("gym")}
+                >
+                  <Dumbbell className="size-16 mx-auto mb-4 text-orange-400" />
+                  <h2 className="text-2xl font-bold mb-2">Gym Services</h2>
+                  <p className="text-gray-400">Personal Training & Weight Training</p>
+                </div>
+
+                <div
+                  className={`bg-gray-800/50 rounded-2xl p-8 border-2 transition-all cursor-pointer text-center ${selectedService === "studio"
+                    ? "border-orange-500 bg-orange-500/10"
+                    : "border-gray-700 hover:border-orange-500/50"
+                    }`}
+                  onClick={() => handleServiceSelect("studio")}
+                >
+                  <Music className="size-16 mx-auto mb-4 text-orange-400" />
+                  <h2 className="text-2xl font-bold mb-2">Studio Classes</h2>
+                  <p className="text-gray-400">Zumba, Yoga, Boxing & Pilates</p>
+                </div>
+              </div>
+
               {/* User Appointments Section */}
               {user && showAppointments && userAppointments.length > 0 && (
                 <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700">
-                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <h3 className="text-xl font-bold mb-4 flex items-center justify-center gap-2">
                     <IconCalendar className="size-5 text-orange-400" />
                     My Appointments
                   </h3>
@@ -577,34 +588,32 @@ export default function BookAppointmentPage() {
                         key={appointment.id}
                         className="bg-gray-700/50 rounded-lg p-4 border border-gray-600"
                       >
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                        <div className="flex flex-col items-center md:flex-row md:items-center md:justify-between text-center md:text-left">
                           <div className="space-y-1">
                             <h4 className="font-bold text-lg">{appointment.serviceName}</h4>
-                            <div className="flex flex-wrap gap-4 text-sm text-gray-300">
+                            <div className="flex flex-wrap justify-center md:justify-start gap-4 text-sm text-gray-300">
                               <span className="capitalize">{appointment.serviceType}</span>
                               <span>{formatDate(appointment.date)}</span>
                               <span>{appointment.time}</span>
                               {appointment.coach && (
                                 <span>Coach: {appointment.coach}</span>
                               )}
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                appointment.paymentMethod === 'gcash' 
-                                  ? 'bg-green-500/20 text-green-400' 
-                                  : 'bg-blue-500/20 text-blue-400'
-                              }`}>
+                              <span className={`px-2 py-1 rounded text-xs ${appointment.paymentMethod === 'gcash'
+                                ? 'bg-green-500/20 text-green-400'
+                                : 'bg-blue-500/20 text-blue-400'
+                                }`}>
                                 {appointment.paymentMethod === 'gcash' ? 'GCash' : 'Cash'}
                               </span>
                             </div>
                           </div>
                           <div className="mt-2 md:mt-0">
                             <span
-                              className={`px-3 py-1 rounded-full text-xs font-medium ${
-                                appointment.status === 'confirmed'
-                                  ? 'bg-green-500/20 text-green-400'
-                                  : appointment.status === 'pending'
+                              className={`px-3 py-1 rounded-full text-xs font-medium ${appointment.status === 'confirmed'
+                                ? 'bg-green-500/20 text-green-400'
+                                : appointment.status === 'pending'
                                   ? 'bg-yellow-500/20 text-yellow-400'
                                   : 'bg-red-500/20 text-red-400'
-                              }`}
+                                }`}
                             >
                               {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
                             </span>
@@ -622,65 +631,10 @@ export default function BookAppointmentPage() {
                 </div>
               )}
 
-              {/* Service Selection */}
-              <div className="grid md:grid-cols-2 gap-6">
-                {/* Gym Card */}
-                <div
-                  className={`cursor-pointer bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-8 border-2 transition-all text-center ${
-                    selectedService === "gym"
-                      ? "border-orange-500 shadow-xl shadow-orange-500/20"
-                      : "border-gray-700 hover:border-orange-500/50"
-                  } ${!user ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  onClick={() => user && handleServiceSelect("gym")}
-                >
-                  <Dumbbell className="size-16 text-orange-400 mx-auto mb-4" />
-                  <h3 className="text-2xl font-bold mb-2">Gym Session</h3>
-                  <p className="text-gray-400 mb-4">
-                    Personal training and weight training
-                  </p>
-                  <div className="space-y-2 text-sm text-gray-300">
-                    <p>• Personal Training with Coach</p>
-                    <p>• Weight Training Area</p>
-                    <p>• Flexible Time Slots</p>
-                  </div>
-                  {!user && (
-                    <div className="mt-4 text-yellow-400 text-sm">
-                      Sign in to book
-                    </div>
-                  )}
-                </div>
-
-                {/* Studio Card */}
-                <div
-                  className={`cursor-pointer bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-8 border-2 transition-all text-center ${
-                    selectedService === "studio"
-                      ? "border-pink-500 shadow-xl shadow-pink-500/20"
-                      : "border-gray-700 hover:border-pink-500/50"
-                  } ${!user ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  onClick={() => user && handleServiceSelect("studio")}
-                >
-                  <Music className="size-16 text-pink-400 mx-auto mb-4" />
-                  <h3 className="text-2xl font-bold mb-2">Studio Class</h3>
-                  <p className="text-gray-400 mb-4">
-                    Zumba, Yoga, Boxing, and Pilates classes
-                  </p>
-                  <div className="space-y-2 text-sm text-gray-300">
-                    <p>• Certified Instructors</p>
-                    <p>• Group Classes</p>
-                    <p>• Various Difficulty Levels</p>
-                  </div>
-                  {!user && (
-                    <div className="mt-4 text-yellow-400 text-sm">
-                      Sign in to book
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Service Details and Booking Form */}
+              {/* Service Selection and Booking Form */}
               {selectedService && user && (
                 <div className="bg-gray-800/50 rounded-2xl p-8 border border-gray-700 space-y-8">
-                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <h2 className="text-2xl font-bold flex items-center justify-center gap-2">
                     <IconCalendar className="size-6 text-orange-400" />
                     Select {selectedService === "gym" ? "Gym Service" : "Studio Class"}
                   </h2>
@@ -690,16 +644,15 @@ export default function BookAppointmentPage() {
                     {(selectedService === "gym" ? gymServices : studioServices).map((service) => (
                       <div
                         key={service.id}
-                        className={`bg-gray-700/50 rounded-xl p-4 border transition-colors cursor-pointer ${
-                          bookingDetails.notes === service.name
-                            ? "border-orange-500"
-                            : "border-gray-600 hover:border-orange-500/50"
-                        }`}
+                        className={`bg-gray-700/50 rounded-xl p-4 border transition-colors cursor-pointer text-center ${bookingDetails.notes === service.name
+                          ? "border-orange-500"
+                          : "border-gray-600 hover:border-orange-500/50"
+                          }`}
                         onClick={() => setBookingDetails(prev => ({ ...prev, notes: service.name }))}
                       >
                         <h3 className="font-bold text-lg mb-2">{service.name}</h3>
                         <p className="text-sm text-gray-400 mb-2">{service.description}</p>
-                        <div className="flex justify-between items-center text-sm">
+                        <div className="flex justify-center items-center gap-4 text-sm">
                           <span className="text-orange-400 font-semibold">{service.price}</span>
                           <span className="text-gray-400">{service.duration}</span>
                         </div>
@@ -713,7 +666,7 @@ export default function BookAppointmentPage() {
                   {/* Coach Selection - Only show for Personal Training */}
                   {selectedService === "gym" && getSelectedServiceData()?.hasCoachSelection && bookingDetails.notes && (
                     <div className="space-y-4">
-                      <h3 className="text-xl font-bold flex items-center gap-2">
+                      <h3 className="text-xl font-bold flex items-center justify-center gap-2">
                         <IconUser className="size-5 text-orange-400" />
                         Choose Your Coach
                       </h3>
@@ -727,11 +680,10 @@ export default function BookAppointmentPage() {
                           {getFilteredCoaches(selectedService).map((coach) => (
                             <div
                               key={coach.id}
-                              className={`bg-gray-700/50 rounded-xl p-4 border transition-colors cursor-pointer ${
-                                selectedCoach?.id === coach.id
-                                  ? "border-green-500"
-                                  : "border-gray-600 hover:border-green-500/50"
-                              }`}
+                              className={`bg-gray-700/50 rounded-xl p-4 border transition-colors cursor-pointer text-center ${selectedCoach?.id === coach.id
+                                ? "border-green-500"
+                                : "border-gray-600 hover:border-green-500/50"
+                                }`}
                               onClick={() => handleCoachSelect(coach)}
                             >
                               <h4 className="font-bold text-lg mb-1">{coach.name}</h4>
@@ -753,7 +705,7 @@ export default function BookAppointmentPage() {
 
                   {/* Date Selection */}
                   <div className="space-y-4">
-                    <h3 className="text-xl font-bold flex items-center gap-2">
+                    <h3 className="text-xl font-bold flex items-center justify-center gap-2">
                       <IconCalendar className="size-5 text-orange-400" />
                       Select Date
                     </h3>
@@ -762,11 +714,10 @@ export default function BookAppointmentPage() {
                         <button
                           key={day.value}
                           onClick={() => handleDateSelect(day.value)}
-                          className={`p-3 rounded-lg border transition-all ${
-                            selectedDate === day.value
-                              ? "bg-orange-500 border-orange-500 text-white"
-                              : "bg-gray-700/50 border-gray-600 hover:border-orange-500/50"
-                          }`}
+                          className={`p-3 rounded-lg border transition-all text-center ${selectedDate === day.value
+                            ? "bg-orange-500 border-orange-500 text-white"
+                            : "bg-gray-700/50 border-gray-600 hover:border-orange-500/50"
+                            }`}
                         >
                           <div className="text-sm font-medium">{day.display.split(' ')[0]}</div>
                           <div className="text-lg font-bold">{day.display.split(' ')[2]}</div>
@@ -779,7 +730,7 @@ export default function BookAppointmentPage() {
                   {/* Time Selection */}
                   {selectedDate && (
                     <div className="space-y-4">
-                      <h3 className="text-xl font-bold flex items-center gap-2">
+                      <h3 className="text-xl font-bold flex items-center justify-center gap-2">
                         <IconClock className="size-5 text-orange-400" />
                         Select Time
                       </h3>
@@ -791,13 +742,12 @@ export default function BookAppointmentPage() {
                               key={time}
                               onClick={() => !isBooked && handleTimeSelect(time)}
                               disabled={isBooked}
-                              className={`p-3 rounded-lg border transition-all ${
-                                selectedTime === time
-                                  ? "bg-orange-500 border-orange-500 text-white"
-                                  : isBooked
+                              className={`p-3 rounded-lg border transition-all text-center ${selectedTime === time
+                                ? "bg-orange-500 border-orange-500 text-white"
+                                : isBooked
                                   ? "bg-gray-800 border-gray-700 text-gray-500 cursor-not-allowed"
                                   : "bg-gray-700/50 border-gray-600 hover:border-orange-500/50"
-                              }`}
+                                }`}
                             >
                               {time}
                               {isBooked && (
@@ -813,11 +763,11 @@ export default function BookAppointmentPage() {
                   {/* Booking Form */}
                   {selectedTime && (
                     <form onSubmit={handleBookingSubmit} className="space-y-6">
-                      <h3 className="text-xl font-bold flex items-center gap-2">
+                      <h3 className="text-xl font-bold flex items-center justify-center gap-2">
                         <IconUser className="size-5 text-orange-400" />
                         Your Information
                       </h3>
-                      
+
                       <div className="grid md:grid-cols-2 gap-4">
                         <input
                           type="text"
@@ -825,7 +775,7 @@ export default function BookAppointmentPage() {
                           required
                           value={bookingDetails.name}
                           onChange={(e) => setBookingDetails({ ...bookingDetails, name: e.target.value })}
-                          className="bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          className="bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 text-center focus:outline-none focus:ring-2 focus:ring-orange-500"
                         />
                         <input
                           type="email"
@@ -833,7 +783,7 @@ export default function BookAppointmentPage() {
                           required
                           value={bookingDetails.email}
                           onChange={(e) => setBookingDetails({ ...bookingDetails, email: e.target.value })}
-                          className="bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          className="bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 text-center focus:outline-none focus:ring-2 focus:ring-orange-500"
                         />
                         <input
                           type="tel"
@@ -841,14 +791,14 @@ export default function BookAppointmentPage() {
                           required
                           value={bookingDetails.phone}
                           onChange={(e) => setBookingDetails({ ...bookingDetails, phone: e.target.value })}
-                          className="bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          className="bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 text-center focus:outline-none focus:ring-2 focus:ring-orange-500"
                         />
                         <input
                           type="text"
                           placeholder="Service/Class Preference"
                           value={bookingDetails.notes}
                           onChange={(e) => setBookingDetails({ ...bookingDetails, notes: e.target.value })}
-                          className="bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          className="bg-gray-900/50 border border-gray-700 rounded-lg px-4 py-3 text-center focus:outline-none focus:ring-2 focus:ring-orange-500"
                         />
                       </div>
 
@@ -860,46 +810,46 @@ export default function BookAppointmentPage() {
                       </button>
                     </form>
                   )}
-                </div>
-              )}
 
-              {/* Booking Summary */}
-              {(selectedService || selectedDate || selectedTime) && user && (
-                <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700">
-                  <h3 className="text-xl font-bold mb-4">Booking Summary</h3>
-                  <div className="grid md:grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-400">Service Type</p>
-                      <p className="font-semibold">
-                        {selectedService ? selectedService.charAt(0).toUpperCase() + selectedService.slice(1) : "Not selected"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">Date</p>
-                      <p className="font-semibold">
-                        {selectedDate ? new Date(selectedDate).toLocaleDateString('en-US', { 
-                          weekday: 'long', 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        }) : "Not selected"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">Time</p>
-                      <p className="font-semibold">{selectedTime || "Not selected"}</p>
-                    </div>
-                  </div>
-                  {selectedCoach && (
-                    <div className="mt-4 pt-4 border-t border-gray-600">
-                      <p className="text-gray-400">Selected Coach</p>
-                      <p className="font-semibold">{selectedCoach.name} - {getSpecialtyLabel(selectedCoach.specialty)}</p>
-                    </div>
-                  )}
-                  {bookingDetails.notes && (
-                    <div className="mt-4 pt-4 border-t border-gray-600">
-                      <p className="text-gray-400">Price</p>
-                      <p className="font-semibold text-orange-400 text-lg">{getServicePrice()}</p>
+                  {/* Booking Summary */}
+                  {(selectedService || selectedDate || selectedTime) && (
+                    <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700">
+                      <h3 className="text-xl font-bold mb-4 text-center">Booking Summary</h3>
+                      <div className="grid md:grid-cols-3 gap-4 text-sm text-center">
+                        <div>
+                          <p className="text-gray-400">Service Type</p>
+                          <p className="font-semibold">
+                            {selectedService ? selectedService.charAt(0).toUpperCase() + selectedService.slice(1) : "Not selected"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400">Date</p>
+                          <p className="font-semibold">
+                            {selectedDate ? new Date(selectedDate).toLocaleDateString('en-US', {
+                              weekday: 'long',
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            }) : "Not selected"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400">Time</p>
+                          <p className="font-semibold">{selectedTime || "Not selected"}</p>
+                        </div>
+                      </div>
+                      {selectedCoach && (
+                        <div className="mt-4 pt-4 border-t border-gray-600 text-center">
+                          <p className="text-gray-400">Selected Coach</p>
+                          <p className="font-semibold">{selectedCoach.name} - {getSpecialtyLabel(selectedCoach.specialty)}</p>
+                        </div>
+                      )}
+                      {bookingDetails.notes && (
+                        <div className="mt-4 pt-4 border-t border-gray-600 text-center">
+                          <p className="text-gray-400">Price</p>
+                          <p className="font-semibold text-orange-400 text-lg">{getServicePrice()}</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -921,7 +871,7 @@ export default function BookAppointmentPage() {
               <p className="text-gray-400">
                 Are you sure you want to book this appointment?
               </p>
-              
+
               <div className="bg-gray-700/50 rounded-lg p-4 space-y-2 text-sm">
                 <p><span className="text-gray-400">Service:</span> {selectedService}</p>
                 <p><span className="text-gray-400">Date:</span> {new Date(selectedDate).toLocaleDateString()}</p>
@@ -960,21 +910,19 @@ export default function BookAppointmentPage() {
           <div className="bg-gray-800 rounded-2xl p-8 max-w-md w-full border border-gray-700">
             <div className="space-y-6">
               <h2 className="text-2xl font-bold text-center">Select Payment Method</h2>
-              
+
               <div className="space-y-4">
                 {/* Cash Payment Option */}
                 <div
-                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                    paymentMethod === "cash"
-                      ? "border-blue-500 bg-blue-500/10"
-                      : "border-gray-600 hover:border-blue-500/50"
-                  }`}
+                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${paymentMethod === "cash"
+                    ? "border-blue-500 bg-blue-500/10"
+                    : "border-gray-600 hover:border-blue-500/50"
+                    }`}
                   onClick={() => setPaymentMethod("cash")}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${
-                      paymentMethod === "cash" ? "bg-blue-500" : "bg-gray-700"
-                    }`}>
+                    <div className={`p-2 rounded-lg ${paymentMethod === "cash" ? "bg-blue-500" : "bg-gray-700"
+                      }`}>
                       <IconCash className="size-6 text-white" />
                     </div>
                     <div>
@@ -986,17 +934,15 @@ export default function BookAppointmentPage() {
 
                 {/* GCash Payment Option */}
                 <div
-                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                    paymentMethod === "gcash"
-                      ? "border-green-500 bg-green-500/10"
-                      : "border-gray-600 hover:border-green-500/50"
-                  }`}
+                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${paymentMethod === "gcash"
+                    ? "border-green-500 bg-green-500/10"
+                    : "border-gray-600 hover:border-green-500/50"
+                    }`}
                   onClick={() => setPaymentMethod("gcash")}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${
-                      paymentMethod === "gcash" ? "bg-green-500" : "bg-gray-700"
-                    }`}>
+                    <div className={`p-2 rounded-lg ${paymentMethod === "gcash" ? "bg-green-500" : "bg-gray-700"
+                      }`}>
                       <IconCreditCard className="size-6 text-white" />
                     </div>
                     <div>
@@ -1012,9 +958,9 @@ export default function BookAppointmentPage() {
                 <div className="bg-gray-700/50 rounded-xl p-6 text-center">
                   <h3 className="font-semibold mb-4">Scan to Pay with GCash</h3>
                   <div className="bg-white p-4 rounded-lg inline-block">
-                    <img 
-                      src="/Apf-qr.jpg" 
-                      alt="GCash QR Code" 
+                    <img
+                      src="/Apf-qr.jpg"
+                      alt="GCash QR Code"
                       className="w-48 h-48 mx-auto object-contain"
                       onError={(e) => {
                         console.log("QR code image failed to load");

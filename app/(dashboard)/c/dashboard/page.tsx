@@ -1,6 +1,4 @@
 "use client";
-import React from "react";
-import { ClientSidebar } from "@/components/ClientSideBar";
 import Chatbot from "@/components/Chatbot";
 import { Dumbbell, Music, Clock, Users, Shield, AlertCircle, Calendar, Heart } from "lucide-react";
 
@@ -8,8 +6,7 @@ export default function DashboardPage() {
   return (
     <>
       <div className="flex min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
-        <ClientSidebar />
-        
+
         <div className="flex-1 lg:ml-64 p-6 pt-16 lg:pt-6">
           <div className="w-full max-w-6xl mx-auto">
             {/* Welcome Section */}
@@ -55,7 +52,7 @@ export default function DashboardPage() {
                   <Dumbbell className="size-8 text-orange-500 mr-3" />
                   <h3 className="text-2xl font-bold text-white">Gym Facilities</h3>
                 </div>
-                
+
                 <div className="space-y-4">
                   <div className="flex items-start">
                     <Clock className="size-5 text-orange-400 mr-3 mt-0.5" />
@@ -64,7 +61,7 @@ export default function DashboardPage() {
                       <p className="text-sm text-gray-300">Monday - Sunday: 5:00 AM - 10:00 PM</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-start">
                     <Users className="size-5 text-orange-400 mr-3 mt-0.5" />
                     <div>
@@ -72,7 +69,7 @@ export default function DashboardPage() {
                       <p className="text-sm text-gray-300">Cardio machines, Free weights, Strength training equipment, Functional training area</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-start">
                     <Shield className="size-5 text-orange-400 mr-3 mt-0.5" />
                     <div>
@@ -89,7 +86,7 @@ export default function DashboardPage() {
                   <Music className="size-8 text-pink-500 mr-3" />
                   <h3 className="text-2xl font-bold text-white">Studio Classes</h3>
                 </div>
-                
+
                 <div className="space-y-4">
                   <div className="flex items-start">
                     <Calendar className="size-5 text-pink-400 mr-3 mt-0.5" />
@@ -98,7 +95,7 @@ export default function DashboardPage() {
                       <p className="text-sm text-gray-300">Multiple sessions daily - Check booking system for available slots</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-start">
                     <Users className="size-5 text-pink-400 mr-3 mt-0.5" />
                     <div>
@@ -106,7 +103,7 @@ export default function DashboardPage() {
                       <p className="text-sm text-gray-300">Zumba, Yoga, Pilates, Boxing, Dance Fitness, HIIT, Spin</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-start">
                     <Heart className="size-5 text-pink-400 mr-3 mt-0.5" />
                     <div>
@@ -124,7 +121,7 @@ export default function DashboardPage() {
                 <AlertCircle className="size-8 text-yellow-500 mr-3" />
                 <h3 className="text-2xl font-bold text-white">Rules & Regulations</h3>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <h4 className="font-semibold text-white text-lg border-b border-gray-700 pb-2">General Rules</h4>
@@ -151,7 +148,7 @@ export default function DashboardPage() {
                     </li>
                   </ul>
                 </div>
-                
+
                 <div className="space-y-4">
                   <h4 className="font-semibold text-white text-lg border-b border-gray-700 pb-2">Safety & Etiquette</h4>
                   <ul className="space-y-3 text-sm text-gray-300">
@@ -178,12 +175,12 @@ export default function DashboardPage() {
                   </ul>
                 </div>
               </div>
-              
+
               <div className="mt-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <div className="flex items-start">
                   <AlertCircle className="size-5 text-yellow-400 mr-3 mt-0.5 flex-shrink-0" />
                   <p className="text-sm text-yellow-300">
-                    <strong>Important:</strong> Violation of rules may result in suspension of membership privileges. 
+                    <strong>Important:</strong> Violation of rules may result in suspension of membership privileges.
                     Please be respectful of other members and staff at all times.
                   </p>
                 </div>

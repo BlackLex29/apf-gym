@@ -1,213 +1,221 @@
 "use client";
-
-import React, { useState, useEffect, useRef } from "react";
-import { MessageCircle, X, Dumbbell, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useState, useRef, useEffect } from 'react';
+import { MessageCircle, X, Send, Loader2 } from 'lucide-react';
 
 interface Message {
-  id: string;
-  text: string;
-  isBot: boolean;
-  timestamp: Date;
+  role: 'user' | 'assistant';
+  content: string;
 }
 
-const INITIAL_MESSAGE: Message = {
-  id: "1",
-  text: "Hi! I'm your GymSchedPro Assistant. Click any question below to learn more!",
-  isBot: true,
-  timestamp: new Date(),
-};
-
-const STORAGE_KEY = "gymChatMessages";
+const CHAT_SUGGESTIONS = [
+  "What are your gym hours?",
+  "How much is the monthly membership?",
+  "What classes do you offer?",
+  "Who are the available coaches?",
+  "What's the walk-in rate?",
+  "Tell me about student discounts",
+  "What amenities do you have?",
+  "What are the gym rules?",
+];
 
 export default function Chatbot() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      role: 'assistant',
+      content: 'Hi! I\'m your GymSchedPro assistant. How can I help you today?',
+    },
+  ]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(true);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setMessages(
-          parsed.map((m: any) => ({
-            ...m,
-            timestamp: new Date(m.timestamp),
-          }))
-        );
-      } catch (e) {
-        console.error("Failed to load chat history:", e);
-        setMessages([INITIAL_MESSAGE]);
-      }
-    }
-  }, []);
-
-  // Save to localStorage whenever messages change
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-  }, [messages]);
-
-  // Auto-scroll to bottom
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
-
-  const recommendedQuestions = [
-    {
-      text: "How much is the monthly membership?",
-      response: "We offer flexible plans:\n• Basic: ₱1,500/month (3 visits)\n• Premium: ₱2,500/month (unlimited gym + 5 classes)\n• Unlimited: ₱3,500/month (full access + personal coach)",
-    },
-    {
-      text: "What are the gym hours?",
-      response: "We're open:\n• Monday–Friday: 5:00 AM – 11:00 PM\n• Saturday–Sunday: 6:00 AM – 10:00 PM\nEarly birds & night owls welcome!",
-    },
-    {
-      text: "What classes do you offer?",
-      response: "We have:\n• Zumba (Mon/Wed/Fri, 9 AM)\n• Boxing (Tue/Thu, 6 PM)\n• Karate (Sat, 10 AM)\n• Gym Training (anytime with coach)",
-    },
-    {
-      text: "How do I book a class?",
-      response: "Easy! Just go to 'Book Studio Class' in your dashboard, pick a class, choose a time, and confirm. GCash payment at checkout.",
-    },
-    {
-      text: "Who are the coaches?",
-      response: "Our certified coaches:\n• Maria Clara – Zumba Expert\n• Carlos Mendez – Boxing Champion\n• Sensei Ryu – Karate Master\n• Coach Mike – Gym Trainer",
-    },
-    {
-      text: "How do I pay?",
-      response: "We accept GCash only. Secure, fast, and paperless. You’ll see the payment screen after confirming your booking.",
-    },
-    {
-      text: "Where is the gym located?",
-      response: "APF Tanauan is located at:\nBrgy. Darasa, Tanauan City, Batangas\nNear Tanauan Public Market & Jollibee.",
-    },
-    {
-      text: "Are there promos?",
-      response: "Yes! Current promo:\nJoin now and get 1 FREE class!\nValid for new members only. Limited time offer.",
-    },
-  ];
-
-  const sendRecommendation = (question: string, answer: string) => {
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      text: question,
-      isBot: false,
-      timestamp: new Date(),
-    };
-    const botMsg: Message = {
-      id: (Date.now() + 1).toString(),
-      text: answer,
-      isBot: true,
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, userMsg, botMsg]);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const clearChat = () => {
-    setMessages([INITIAL_MESSAGE]);
-    localStorage.removeItem(STORAGE_KEY);
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  useEffect(() => {
+    // Hide suggestions after first user message
+    if (messages.some(msg => msg.role === 'user')) {
+      setShowSuggestions(false);
+    }
+  }, [messages]);
+
+  const handleSend = async (messageContent?: string) => {
+    const content = messageContent || input.trim();
+    if (!content || isLoading) return;
+
+    const userMessage: Message = { role: 'user', content };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+    setShowSuggestions(false);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...messages, userMessage],
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: data.message,
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: 'Sorry, I encountered an error. Please try again.',
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSuggestionClick = (suggestion: string) => {
+    handleSend(suggestion);
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
   };
 
   return (
     <>
-      {/* Floating Button */}
-      <Button
-        onClick={() => setIsOpen(true)}
-        className={`fixed bottom-6 right-6 h-14 w-14 rounded-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-2xl transition-all duration-300 transform hover:scale-110 z-50 flex items-center justify-center ${
-          isOpen ? "opacity-0 pointer-events-none" : "opacity-100"
-        }`}
-      >
-        <MessageCircle className="h-7 w-7" />
-      </Button>
+      {/* Chat Toggle Button */}
+      {!isOpen && (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="fixed bottom-6 right-6 bg-orange-500 hover:bg-orange-600 text-white rounded-full p-4 shadow-2xl transition-all duration-300 hover:scale-110 z-50"
+        >
+          <MessageCircle className="size-6" />
+        </button>
+      )}
 
       {/* Chat Window */}
       {isOpen && (
-        <Card className="fixed bottom-6 right-6 w-80 sm:w-96 h-[560px] bg-gray-900/95 backdrop-blur-lg border border-gray-700 shadow-2xl z-50 flex flex-col max-w-[calc(100vw-3rem)] rounded-2xl overflow-hidden">
-          <CardHeader className="flex flex-row items-center justify-between p-4 bg-gradient-to-r from-orange-500/20 to-red-500/20 border-b border-gray-700 flex-shrink-0">
-            <CardTitle className="text-white text-lg font-bold flex items-center gap-2">
-              <Dumbbell className="h-5 w-5 text-orange-400" />
-              GymSchedPro Assistant
-            </CardTitle>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={clearChat}
-                className="text-gray-300 hover:text-orange-400 hover:bg-white/10 rounded-full h-8 w-8"
-                title="Clear chat"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsOpen(false)}
-                className="text-gray-300 hover:text-white hover:bg-white/10 rounded-full"
-              >
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-          </CardHeader>
-
-          <CardContent className="flex-1 flex flex-col p-0 min-h-0">
-            {/* Scrollable Messages + Recommendations */}
-            <ScrollArea className="flex-1" ref={scrollRef}>
-              <div className="p-4 space-y-4 min-h-full">
-                {/* Messages */}
-                {messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.isBot ? "justify-start" : "justify-end"}`}
-                  >
-                    <div
-                      className={`max-w-[88%] p-3 rounded-2xl text-sm break-words shadow-md whitespace-pre-line ${
-                        msg.isBot
-                          ? "bg-gray-800 text-gray-100 border border-gray-700"
-                          : "bg-gradient-to-r from-orange-500 to-red-500 text-white"
-                      }`}
-                    >
-                      {msg.text}
-                    </div>
-                  </div>
-                ))}
-
-                {/* Recommended Questions */}
-                <div className="mt-6 pt-4 border-t border-gray-700">
-                  <p className="text-xs font-semibold text-orange-400 text-center mb-3">
-                    Recommended Questions
-                  </p>
-                  <div className="space-y-2">
-                    {recommendedQuestions.map((q, i) => (
-                      <button
-                        key={i}
-                        onClick={() => sendRecommendation(q.text, q.response)}
-                        className="w-full text-left p-3 text-sm bg-gray-800/80 hover:bg-orange-500/20 text-gray-200 rounded-xl border border-gray-700 transition-all duration-200 shadow-sm hover:shadow-md transform hover:scale-[1.02]"
-                      >
-                        {q.text}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Bottom padding */}
-                <div className="h-4" />
+        <div className="fixed bottom-6 right-6 w-96 h-[600px] bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl flex flex-col z-50">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-orange-500 to-red-500 p-4 rounded-t-2xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-white/20 p-2 rounded-full">
+                <MessageCircle className="size-5 text-white" />
               </div>
-            </ScrollArea>
-
-            {/* Footer */}
-            <div className="p-3 bg-gray-800/50 border-t border-gray-700 text-center flex-shrink-0">
-              <p className="text-xs text-gray-400">
-                Click any question to get instant answers!
-              </p>
+              <div>
+                <h3 className="font-bold text-white">Gym Assistant</h3>
+                <p className="text-xs text-white/80">Online</p>
+              </div>
             </div>
-          </CardContent>
-        </Card>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="text-white hover:bg-white/20 rounded-full p-1 transition-colors"
+            >
+              <X className="size-5" />
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {messages.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[80%] rounded-2xl px-4 py-2 ${msg.role === 'user'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-gray-800 text-gray-100 border border-gray-700'
+                    }`}
+                >
+                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                </div>
+              </div>
+            ))}
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-gray-800 border border-gray-700 rounded-2xl px-4 py-2">
+                  <Loader2 className="size-5 animate-spin text-orange-500" />
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Suggestions or Input */}
+          <div className="p-4 border-t border-gray-700">
+            {showSuggestions ? (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-400 mb-2">Quick questions:</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {CHAT_SUGGESTIONS.map((suggestion, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleSuggestionClick(suggestion)}
+                      disabled={isLoading}
+                      className="text-left text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-3 py-2 border border-gray-700 hover:border-orange-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setShowSuggestions(false)}
+                  className="w-full text-xs text-orange-400 hover:text-orange-300 mt-2"
+                >
+                  Type your own question
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Type your message..."
+                    className="flex-1 bg-gray-800 text-white rounded-full px-4 py-2 text-sm border border-gray-700 focus:outline-none focus:border-orange-500"
+                    disabled={isLoading}
+                  />
+                  <button
+                    onClick={() => handleSend()}
+                    disabled={isLoading || !input.trim()}
+                    className="bg-orange-500 hover:bg-orange-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-full p-2 transition-colors"
+                  >
+                    <Send className="size-5" />
+                  </button>
+                </div>
+                <button
+                  onClick={() => setShowSuggestions(true)}
+                  className="w-full text-xs text-orange-400 hover:text-orange-300"
+                >
+                  Show suggestions
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </>
   );

@@ -1,9 +1,62 @@
-import { Adminsidebar } from '@/components/Adminsidebar'
-import { SiteHeader } from '@/components/site-header'
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
-import React from 'react'
+"use client";
 
-const layout = ({ children }: { children: React.ReactNode }) => {
+import { AppSidebar } from '@/components/app-sidebar';
+import { SiteHeader } from '@/components/site-header';
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { AuthProvider, useAuth } from '@/hooks/useAuth';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+
+export default function DashboardLayout({
+    children,
+}: {
+    children: React.ReactNode;
+}) {
+    const { user, userRole, loading } = useAuth();
+    const router = useRouter();
+
+    useEffect(() => {
+        if (!loading && !user) {
+            router.push('/login');
+        }
+
+        // Add role-based route protection
+        if (!loading && user && userRole) {
+            const currentPath = window.location.pathname;
+
+            // Check if user is accessing admin routes without admin role
+            if (currentPath.startsWith('/a/') && userRole !== 'admin') {
+                router.push('/c/dashboard'); // or appropriate dashboard
+            }
+
+            // Check if user is accessing client routes without client role
+            if (currentPath.startsWith('/c/') && userRole !== 'client') {
+                router.push(userRole === 'admin' ? '/a/dashboard' : '/m/dashboard');
+            }
+
+            // Check if user is accessing coach routes without coach role
+            if (currentPath.startsWith('/m/') && userRole !== 'coach') {
+                router.push(userRole === 'admin' ? '/a/dashboard' : '/c/dashboard');
+            }
+        }
+    }, [user, userRole, loading, router]);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-screen">
+                <div className="text-lg">Loading...</div>
+            </div>
+        );
+    }
+
+    if (!user) {
+        return (
+            <div className="flex items-center justify-center h-screen">
+                <div className="text-lg">Redirecting...</div>
+            </div>
+        );
+    }
+
     return (
         <SidebarProvider
             style={
@@ -13,7 +66,13 @@ const layout = ({ children }: { children: React.ReactNode }) => {
                 } as React.CSSProperties
             }
         >
-            <Adminsidebar variant="inset" />
+            <AppSidebar
+                variant="inset"
+                userRole={{
+                    role: userRole as 'admin' | 'client' | 'coach',
+                    userId: user?.uid
+                }}
+            />
             <SidebarInset>
                 <SiteHeader />
                 <div className="flex flex-1 flex-col">
@@ -25,7 +84,5 @@ const layout = ({ children }: { children: React.ReactNode }) => {
                 </div>
             </SidebarInset>
         </SidebarProvider>
-    )
+    );
 }
-
-export default layout

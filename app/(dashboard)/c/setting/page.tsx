@@ -50,7 +50,7 @@ import {
 import { useRouter } from "next/navigation";
 
 const getSecretKey = (secret: TotpSecret): string => {
-  // @ts-ignore – Firebase types don’t expose secret directly
+  // @ts-ignore – Firebase types don't expose secret directly
   return (secret as any).secret;
 };
 
@@ -62,6 +62,7 @@ export default function SettingsPage() {
    * ------------------------------------------------------------------ */
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [userRole, setUserRole] = useState<string>("");
 
   /* ------------------------------------------------------------------ *
    *  Global UI state
@@ -106,7 +107,7 @@ export default function SettingsPage() {
   const [enrolled, setEnrolled] = useState(false);
 
   /* ------------------------------------------------------------------ *
-   *  Load user + Firestore data + ADMIN REDIRECT
+   *  Load user + Firestore data + ROLE-BASED REDIRECT
    * ------------------------------------------------------------------ */
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
@@ -124,11 +125,14 @@ export default function SettingsPage() {
         const snap = await getDoc(doc(db, "users", u.uid));
         if (snap.exists()) {
           const d = snap.data();
+          const role = d.role || "user"; // Changed from "client" to "user"
+          setUserRole(role);
 
-          // ---- ADMIN CHECK ----
-          if (d.role === "admin") {
-            router.replace("/admin/dashboard");
-            return; // stop loading the settings UI
+          // ---- ROLE-BASED REDIRECT ----
+          // If admin accesses user settings, redirect to admin settings
+          if (role === "admin") {
+            router.replace("/c/setting"); // Fixed: redirect to admin settings
+            return; // stop loading the user settings UI
           }
 
           // ---- LOAD SETTINGS FOR REGULAR USERS ----
@@ -140,9 +144,13 @@ export default function SettingsPage() {
           setSmsNotifications(d.smsNotifications ?? false);
           setLanguage(d.language ?? "en");
           setTimezone(d.timezone ?? "asia/manila");
+        } else {
+          // If no user document exists, default to "user" role
+          setUserRole("user");
         }
       } catch (e) {
         console.error(e);
+        setUserRole("user"); // Default to user role on error
       }
 
       // ---- 2FA status ----
@@ -327,6 +335,18 @@ export default function SettingsPage() {
     );
   }
 
+  // If user is admin, show redirect message
+  if (userRole === "admin") {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Redirecting to admin settings...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Sticky header */}
@@ -336,6 +356,11 @@ export default function SettingsPage() {
           <p className="text-sm text-muted-foreground">
             Manage your account preferences and security
           </p>
+          {userRole && (
+            <Badge variant="secondary" className="mt-2">
+              {userRole === "admin" ? "Administrator" : "User"} Account
+            </Badge>
+          )}
         </div>
       </header>
 
