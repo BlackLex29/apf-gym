@@ -1,4 +1,4 @@
-"use client";
+ "use client";
 
 import * as React from "react";
 import {
@@ -30,8 +30,10 @@ import {
 import { useRouter, usePathname } from "next/navigation";
 import { Dumbbell } from "lucide-react";
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/firebaseConfig";
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
+import { auth } from "@/lib/firebaseConfig";
+import { onAuthStateChanged } from "firebase/auth";
 
 // Types
 interface UserRole {
@@ -42,7 +44,7 @@ interface UserRole {
 interface NavItem {
     title: string;
     url: string;
-    icon: React.ComponentType<any>;
+    icon: React.ComponentType<{ className?: string }>;
     id: string;
     roles: ('admin' | 'client' | 'coach')[];
     badge?: number;
@@ -371,9 +373,51 @@ export function AppSidebar({ userRole, ...props }: AppSidebarProps) {
     const [unreadCount, setUnreadCount] = useState(0);
     const [pendingPaymentsCount, setPendingPaymentsCount] = useState(0);
     const [upcomingSessions, setUpcomingSessions] = useState<Session[]>([]);
+    const [currentUserRole, setCurrentUserRole] = useState<UserRole>({ role: 'admin' });
 
-    // Default to admin if no role provided
-    const effectiveUserRole = userRole || { role: 'admin' as const };
+    // Simple path-based role detection
+    const detectUserRoleFromPath = (): UserRole => {
+        if (pathname.startsWith('/a/')) {
+            return { role: 'admin' };
+        } else if (pathname.startsWith('/c/')) {
+            return { role: 'client' };
+        } else if (pathname.startsWith('/m/')) {
+            return { role: 'coach' };
+        }
+        return { role: 'admin' }; // default to admin
+    };
+
+    // Update role when pathname changes
+    useEffect(() => {
+        const detectedRole = detectUserRoleFromPath();
+        console.log('🔵 Path-based role detection:', detectedRole.role, 'for path:', pathname);
+        setCurrentUserRole(detectedRole);
+    }, [pathname]);
+
+    // Get userId from auth (but don't change role)
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (user) {
+                console.log('🟢 Auth user detected:', user.email);
+                
+                // Only update userId, keep the path-based role
+                setCurrentUserRole(prev => {
+                    console.log('🔵 Keeping path-based role:', prev.role, 'for user:', user.uid);
+                    return {
+                        ...prev,
+                        userId: user.uid
+                    };
+                });
+            }
+        });
+
+        return () => unsubscribe();
+    }, []);
+
+    // Use provided userRole or detected role
+    const effectiveUserRole = userRole || currentUserRole;
+    console.log('🟡 Effective user role:', effectiveUserRole.role);
+    
     const navData = getNavData(effectiveUserRole, unreadCount, pendingPaymentsCount);
 
     // Real-time data effects
