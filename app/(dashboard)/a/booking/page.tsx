@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   IconCalendar,
   IconSearch,
@@ -11,6 +11,8 @@ import {
   IconEdit,
   IconTrash,
 } from "@tabler/icons-react";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, onSnapshot } from "firebase/firestore";
 
 interface Appointment {
   id: string;
@@ -24,49 +26,66 @@ interface Appointment {
   coach?: string;
   coachSpecialty?: string;
   status: "pending" | "confirmed" | "completed" | "cancelled";
+  paymentMethod: "cash" | "gcash";
+  paymentStatus: "pending" | "paid";
   notes?: string;
   createdAt: Date;
+  userId: string;
 }
 
 export default function BookingsPage() {
-  const [appointments] = useState<Appointment[]>([
-    {
-      id: "1",
-      clientName: "John Doe",
-      clientEmail: "john@example.com",
-      clientPhone: "09123456789",
-      serviceType: "gym",
-      serviceName: "Personal Training",
-      date: "2025-11-20",
-      time: "10:00 AM",
-      coach: "Coach Mike",
-      coachSpecialty: "Gym Training",
-      status: "confirmed",
-      notes: "First session, focus on basics",
-      createdAt: new Date()
-    },
-    {
-      id: "2",
-      clientName: "Jane Smith",
-      clientEmail: "jane@example.com",
-      clientPhone: "09987654321",
-      serviceType: "studio",
-      serviceName: "Zumba Class",
-      date: "2025-11-21",
-      time: "2:00 PM",
-      status: "pending",
-      notes: "Beginner level",
-      createdAt: new Date()
-    }
-  ]);
-  
-  const [loading] = useState(false);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterService, setFilterService] = useState<string>("all");
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [appointmentToDelete, setAppointmentToDelete] = useState<string | null>(null);
+
+  // Fetch appointments from Firestore
+  useEffect(() => {
+    const fetchAppointments = async () => {
+      try {
+        const appointmentsRef = collection(db, "appointments");
+        const q = query(appointmentsRef, orderBy("createdAt", "desc"));
+        
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          const appointmentsData: Appointment[] = [];
+          snapshot.forEach((doc) => {
+            const data = doc.data();
+            appointmentsData.push({
+              id: doc.id,
+              clientName: data.clientName,
+              clientEmail: data.clientEmail,
+              clientPhone: data.clientPhone,
+              serviceType: data.serviceType,
+              serviceName: data.serviceName,
+              date: data.date,
+              time: data.time,
+              coach: data.coach,
+              coachSpecialty: data.coachSpecialty,
+              status: data.status,
+              paymentMethod: data.paymentMethod,
+              paymentStatus: data.paymentStatus,
+              notes: data.notes,
+              createdAt: data.createdAt?.toDate() || new Date(),
+              userId: data.userId
+            });
+          });
+          setAppointments(appointmentsData);
+          setLoading(false);
+        });
+
+        return () => unsubscribe();
+      } catch (error) {
+        console.error('Error fetching appointments:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchAppointments();
+  }, []);
 
   const statusColors = {
     pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
@@ -87,15 +106,53 @@ export default function BookingsPage() {
     studio: "Studio Class"
   };
 
+  const paymentLabels = {
+    cash: "Cash",
+    gcash: "GCash"
+  };
+
+  const paymentStatusColors = {
+    pending: "bg-yellow-500/20 text-yellow-400",
+    paid: "bg-green-500/20 text-green-400"
+  };
+
   const updateAppointmentStatus = async (id: string, newStatus: Appointment["status"]) => {
-    alert(`Status updated to ${newStatus}`);
-    setSelectedAppointment(null);
+    try {
+      const appointmentRef = doc(db, "appointments", id);
+      await updateDoc(appointmentRef, {
+        status: newStatus,
+        updatedAt: new Date()
+      });
+      setSelectedAppointment(null);
+    } catch (error) {
+      console.error("Error updating appointment status:", error);
+      alert("Failed to update appointment status");
+    }
+  };
+
+  const updatePaymentStatus = async (id: string, newPaymentStatus: "pending" | "paid") => {
+    try {
+      const appointmentRef = doc(db, "appointments", id);
+      await updateDoc(appointmentRef, {
+        paymentStatus: newPaymentStatus,
+        updatedAt: new Date()
+      });
+    } catch (error) {
+      console.error("Error updating payment status:", error);
+      alert("Failed to update payment status");
+    }
   };
 
   const deleteAppointment = async (id: string) => {
-    alert("Appointment deleted!");
-    setShowDeleteConfirm(false);
-    setAppointmentToDelete(null);
+    try {
+      const appointmentRef = doc(db, "appointments", id);
+      await deleteDoc(appointmentRef);
+      setShowDeleteConfirm(false);
+      setAppointmentToDelete(null);
+    } catch (error) {
+      console.error("Error deleting appointment:", error);
+      alert("Failed to delete appointment");
+    }
   };
 
   const handleDeleteClick = (id: string) => {
@@ -135,6 +192,10 @@ export default function BookingsPage() {
     return appointments.filter(apt => apt.serviceType === serviceType).length;
   };
 
+  const getPaymentStatusCount = (paymentStatus: "pending" | "paid") => {
+    return appointments.filter(apt => apt.paymentStatus === paymentStatus).length;
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white items-center justify-center">
@@ -169,7 +230,7 @@ export default function BookingsPage() {
             </div>
 
             {/* Stats Cards - Centered */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700 text-center">
                 <p className="text-gray-400 text-sm">Pending</p>
                 <p className="text-2xl font-bold text-yellow-400">{getStatusCount("pending")}</p>
@@ -185,6 +246,10 @@ export default function BookingsPage() {
               <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700 text-center">
                 <p className="text-gray-400 text-sm">Studio Classes</p>
                 <p className="text-2xl font-bold text-pink-400">{getServiceCount("studio")}</p>
+              </div>
+              <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700 text-center">
+                <p className="text-gray-400 text-sm">Pending Payment</p>
+                <p className="text-2xl font-bold text-yellow-400">{getPaymentStatusCount("pending")}</p>
               </div>
             </div>
 
@@ -242,7 +307,7 @@ export default function BookingsPage() {
                       <th className="text-center p-4 font-semibold">Service Type</th>
                       <th className="text-center p-4 font-semibold">Service Details</th>
                       <th className="text-center p-4 font-semibold">Date & Time</th>
-                      <th className="text-center p-4 font-semibold">Coach</th>
+                      <th className="text-center p-4 font-semibold">Payment</th>
                       <th className="text-center p-4 font-semibold">Status</th>
                       <th className="text-center p-4 font-semibold">Actions</th>
                     </tr>
@@ -272,6 +337,11 @@ export default function BookingsPage() {
                         <td className="p-4">
                           <div className="text-center">
                             <p className="font-medium">{appointment.serviceName}</p>
+                            {appointment.coach && (
+                              <p className="text-xs text-blue-400 mt-1">
+                                Coach: {appointment.coach}
+                              </p>
+                            )}
                             {appointment.notes && (
                               <p className="text-xs text-gray-400 mt-1">{appointment.notes}</p>
                             )}
@@ -283,15 +353,17 @@ export default function BookingsPage() {
                             <p className="text-xs text-gray-400">{appointment.time}</p>
                           </div>
                         </td>
-                        <td className="p-4">
-                          {appointment.coach ? (
-                            <div className="text-center">
-                              <p className="font-medium">{appointment.coach}</p>
-                              <p className="text-xs text-gray-400">{appointment.coachSpecialty}</p>
-                            </div>
-                          ) : (
-                            <span className="text-gray-500 text-sm">No coach</span>
-                          )}
+                        <td className="p-4 text-center">
+                          <div className="space-y-1">
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              paymentStatusColors[appointment.paymentStatus]
+                            }`}>
+                              {appointment.paymentStatus === 'paid' ? 'Paid' : 'Pending'}
+                            </span>
+                            <p className="text-xs text-gray-400">
+                              {paymentLabels[appointment.paymentMethod]}
+                            </p>
+                          </div>
                         </td>
                         <td className="p-4 text-center">
                           <span className={`px-3 py-1 rounded-full text-xs font-medium border inline-block ${
@@ -411,10 +483,32 @@ export default function BookingsPage() {
                         Assigned Coach
                       </label>
                       <p className="text-gray-300">
-                        {selectedAppointment.coach} - {selectedAppointment.coachSpecialty}
+                        {selectedAppointment.coach} {selectedAppointment.coachSpecialty && `- ${selectedAppointment.coachSpecialty}`}
                       </p>
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* Payment Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="text-center">
+                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                    Payment Method
+                  </label>
+                  <p className="text-gray-300">
+                    {paymentLabels[selectedAppointment.paymentMethod]}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                    Payment Status
+                  </label>
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    paymentStatusColors[selectedAppointment.paymentStatus]
+                  }`}>
+                    {selectedAppointment.paymentStatus === 'paid' ? 'Paid' : 'Pending Payment'}
+                  </span>
                 </div>
               </div>
 
@@ -432,6 +526,17 @@ export default function BookingsPage() {
 
               {/* Status Actions - Centered */}
               <div className="flex flex-wrap justify-center gap-2 pt-4">
+                {/* Payment Status Actions */}
+                {selectedAppointment.paymentStatus === "pending" && (
+                  <button
+                    onClick={() => updatePaymentStatus(selectedAppointment.id, "paid")}
+                    className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg font-semibold transition-colors"
+                  >
+                    Mark as Paid
+                  </button>
+                )}
+
+                {/* Appointment Status Actions */}
                 {selectedAppointment.status === "pending" && (
                   <>
                     <button
